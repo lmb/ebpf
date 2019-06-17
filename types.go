@@ -1,6 +1,6 @@
 package ebpf
 
-//go:generate stringer -output types_string.go -type=MapType,ProgType
+//go:generate stringer -output types_string.go -type=MapType
 
 // MapType indicates the type map structure
 // that will be initialized in the kernel.
@@ -90,89 +90,4 @@ const (
 	_Any = iota
 	_NoExist
 	_Exist
-)
-
-// All flags used by eBPF helper functions
-const (
-	// RecomputeCSUM SKBStoreBytes flags
-	RecomputeCSUM = uint64(1)
-	// FInvalidateHash SKBStoreBytes flags
-	FInvalidateHash = uint64(1 << 1)
-
-	// FHdrFieldMask CSUMReplaceL4 and CSUMReplaceL3 flags.
-	// First 4 bits are for passing the header field size.
-	FHdrFieldMask = uint64(0xF)
-
-	// FPseudoHdr CSUMReplaceL4 flags
-	FPseudoHdr = uint64(1 << 4)
-	// FMarkMangled0 CSUMReplaceL4 flags
-	FMarkMangled0 = uint64(1 << 5)
-	// FMakrEnforce CSUMReplaceL4 flags
-	FMakrEnforce = uint64(1 << 6)
-
-	// FIngress CloneRedirect and Redirect flags
-	FIngress = uint64(1)
-
-	// FTunInfoIPV6 SKBSetTunnelKey and SKBGetTunnelKey flags
-	FTunInfoIPV6 = uint(1)
-
-	// FSkipFieldMask GetStackID flags
-	FSkipFieldMask = uint64(0xff)
-	// FUserStack GetStackID flags
-	FUserStack = uint64(1 << 8)
-	// FFastStackCMP GetStackID flags
-	FFastStackCMP = uint64(1 << 9)
-	// FReuseStackID GetStackID flags
-	FReuseStackID = uint64(1 << 10)
-
-	// FZeroCSUMTx SKBSetTunnelKey flag
-	FZeroCSUMTX = uint64(1 << 1)
-	// FZeroCSUMTx SKBSetTunnelKey flag
-	FDontFragment = uint64(1 << 2)
-
-	// FindIndexMask PerfEventOutput and PerfEventRead flags.
-	FIndexMask = uint64(0xffffffff)
-	// FCurrentCPU PerfEventOutput and PerfEventRead flags.
-	FCurrentCPU = FIndexMask
-
-	// FCtxLenMask PerfEventOutput for SKBuff input context.
-	FCtxLenMask = uint64(0xfffff << 32)
-
-	// AdjRoomNet Mode for SKBAdjustRoom helper.
-	AdjRoomNet = 0
-)
-
-// ProgType of the eBPF program
-type ProgType uint32
-
-// eBPF program types
-const (
-	// Unrecognized program type
-	Unrecognized ProgType = iota
-	// SocketFilter socket or seccomp filter
-	SocketFilter
-	// Kprobe program
-	Kprobe
-	// SchedCLS traffic control shaper
-	SchedCLS
-	// SchedACT routing control shaper
-	SchedACT
-	// TracePoint program
-	TracePoint
-	// XDP program
-	XDP
-	// PerfEvent program
-	PerfEvent
-	// CGroupSKB program
-	CGroupSKB
-	// CGroupSock program
-	CGroupSock
-	// LWTIn program
-	LWTIn
-	// LWTOut program
-	LWTOut
-	// LWTXmit program
-	LWTXmit
-	// SockOps program
-	SockOps
 )

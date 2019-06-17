@@ -84,7 +84,7 @@ type bpfPinObjAttr struct {
 }
 
 type bpfProgLoadAttr struct {
-	progType           ProgType
+	progType           uint32
 	insCount           uint32
 	instructions       syscallPtr
 	license            syscallPtr
