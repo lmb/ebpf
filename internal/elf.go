@@ -2,6 +2,7 @@ package internal
 
 import (
 	"debug/elf"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -26,6 +27,10 @@ func NewSafeELFFile(r io.ReaderAt) (safe *SafeELFFile, err error) {
 		safe = nil
 		err = fmt.Errorf("reading ELF file panicked: %s", r)
 	}()
+
+	if file, ok := r.(*SafeELFFile); ok {
+		return file, nil
+	}
 
 	file, err := elf.NewFile(r)
 	if err != nil {
@@ -56,6 +61,14 @@ func OpenSafeELFFile(path string) (safe *SafeELFFile, err error) {
 	}
 
 	return &SafeELFFile{file}, nil
+}
+
+// ReadAt is used for a crazy hack to allow passing *SafeELFFile from the
+// ELF reader into the BTF package.
+//
+// The function always returns an error.
+func (se *SafeELFFile) ReadAt([]byte, int64) (int, error) {
+	return 0, errors.New("SafeELFFile doesn't implement ReaderAt")
 }
 
 // Symbols is the safe version of elf.File.Symbols.

@@ -94,7 +94,7 @@ func LoadCollectionSpecFromReader(rd io.ReaderAt) (*CollectionSpec, error) {
 		return nil, fmt.Errorf("load version: %w", err)
 	}
 
-	btfSpec, err := btf.LoadSpecFromReader(rd)
+	btfSpec, err := btf.LoadSpecFromReader(f)
 	if err != nil && !errors.Is(err, btf.ErrNotFound) {
 		return nil, fmt.Errorf("load BTF: %w", err)
 	}
