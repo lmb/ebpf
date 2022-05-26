@@ -880,14 +880,14 @@ func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTabl
 			typ = arr
 
 		case kindStruct:
-			members, err := convertMembers(raw.data.([]btfMember), raw.KindFlag())
+			members, err := convertMembers(raw.data.([]btfMember), raw.Bitfield())
 			if err != nil {
 				return nil, fmt.Errorf("struct %s (id %d): %w", name, id, err)
 			}
 			typ = &Struct{name, raw.Size(), members}
 
 		case kindUnion:
-			members, err := convertMembers(raw.data.([]btfMember), raw.KindFlag())
+			members, err := convertMembers(raw.data.([]btfMember), raw.Bitfield())
 			if err != nil {
 				return nil, fmt.Errorf("union %s (id %d): %w", name, id, err)
 			}
@@ -909,11 +909,7 @@ func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTabl
 			typ = &Enum{name, vals}
 
 		case kindForward:
-			if raw.KindFlag() {
-				typ = &Fwd{name, FwdUnion}
-			} else {
-				typ = &Fwd{name, FwdStruct}
-			}
+			typ = &Fwd{name, raw.FwdKind()}
 
 		case kindTypedef:
 			typedef := &Typedef{name, nil}
@@ -984,7 +980,7 @@ func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTabl
 					return nil, err
 				}
 			}
-			typ = &Datasec{name, raw.SizeType, vars}
+			typ = &Datasec{name, raw.Size(), vars}
 
 		case kindFloat:
 			typ = &Float{name, raw.Size()}
