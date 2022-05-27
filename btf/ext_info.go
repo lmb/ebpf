@@ -132,8 +132,9 @@ func (ei *ExtInfos) Assign(insns asm.Instructions, section string) {
 
 // MarshalExtInfos encodes function and line info embedded in insns into kernel
 // wire format.
-func MarshalExtInfos(insns asm.Instructions, typeID func(Type) (TypeID, error)) (funcInfos, lineInfos []byte, _ error) {
+func MarshalExtInfos(insns asm.Instructions, spec *Spec) (funcInfos, lineInfos []byte, _ error) {
 	iter := insns.Iterate()
+	stb := spec.strings.Builder()
 	var fiBuf, liBuf bytes.Buffer
 	for iter.Next() {
 		if fn := FuncMetadata(iter.Ins); fn != nil {
@@ -141,7 +142,7 @@ func MarshalExtInfos(insns asm.Instructions, typeID func(Type) (TypeID, error)) 
 				fn:     fn,
 				offset: iter.Offset,
 			}
-			if err := fi.marshal(&fiBuf, typeID); err != nil {
+			if err := fi.marshal(&fiBuf, spec.TypeID); err != nil {
 				return nil, nil, fmt.Errorf("write func info: %w", err)
 			}
 		}
@@ -151,7 +152,7 @@ func MarshalExtInfos(insns asm.Instructions, typeID func(Type) (TypeID, error)) 
 				line:   line,
 				offset: iter.Offset,
 			}
-			if err := li.marshal(&liBuf); err != nil {
+			if err := li.marshal(&liBuf, stb.Lookup); err != nil {
 				return nil, nil, fmt.Errorf("write line info: %w", err)
 			}
 		}
@@ -428,12 +429,6 @@ type Line struct {
 	line       string
 	lineNumber uint32
 	lineColumn uint32
-
-	// TODO: We should get rid of the fields below, but for that we need to be
-	// able to write BTF.
-
-	fileNameOff uint32
-	lineOff     uint32
 }
 
 func (li *Line) FileName() string {
@@ -496,8 +491,6 @@ func newLineInfo(li bpfLineInfo, strings *stringTable) (*lineInfo, error) {
 			line,
 			lineNumber,
 			lineColumn,
-			li.FileNameOff,
-			li.LineOff,
 		},
 		asm.RawInstructionOffset(li.InsnOff),
 	}, nil
@@ -519,7 +512,7 @@ func newLineInfos(blis []bpfLineInfo, strings *stringTable) ([]lineInfo, error) 
 }
 
 // marshal writes the binary representation of the LineInfo to w.
-func (li *lineInfo) marshal(w io.Writer) error {
+func (li *lineInfo) marshal(w io.Writer, stringOffset func(string) (uint32, error)) error {
 	line := li.line
 	if line.lineNumber > bpfLineMax {
 		return fmt.Errorf("line %d exceeds %d", line.lineNumber, bpfLineMax)
@@ -529,10 +522,20 @@ func (li *lineInfo) marshal(w io.Writer) error {
 		return fmt.Errorf("column %d exceeds %d", line.lineColumn, bpfColumnMax)
 	}
 
+	fileNameOff, err := stringOffset(line.fileName)
+	if err != nil {
+		return fmt.Errorf("file name %q: %w", line.fileName, err)
+	}
+
+	lineOff, err := stringOffset(line.line)
+	if err != nil {
+		return fmt.Errorf("line %q: %w", line.line, err)
+	}
+
 	bli := bpfLineInfo{
 		uint32(li.offset),
-		line.fileNameOff,
-		line.lineOff,
+		fileNameOff,
+		lineOff,
 		(line.lineNumber << bpfLineShift) | line.lineColumn,
 	}
 	return binary.Write(w, internal.NativeEndian, &bli)

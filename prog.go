@@ -217,6 +217,11 @@ func newProgramWithOptions(spec *ProgramSpec, opts ProgramOptions, handles *hand
 			return nil, fmt.Errorf("apply CO-RE relocations: %w", err)
 		}
 
+		fib, lib, err := btf.MarshalExtInfos(insns, spec.BTF)
+		if err != nil {
+			return nil, err
+		}
+
 		handle, err := handles.btfHandle(spec.BTF)
 		btfDisabled = errors.Is(err, btf.ErrNotSupported)
 		if err != nil && !btfDisabled {
@@ -225,11 +230,6 @@ func newProgramWithOptions(spec *ProgramSpec, opts ProgramOptions, handles *hand
 
 		if handle != nil {
 			attr.ProgBtfFd = uint32(handle.FD())
-
-			fib, lib, err := btf.MarshalExtInfos(insns, spec.BTF.TypeID)
-			if err != nil {
-				return nil, err
-			}
 
 			attr.FuncInfoRecSize = btf.FuncInfoSize
 			attr.FuncInfoCnt = uint32(len(fib)) / btf.FuncInfoSize

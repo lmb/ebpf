@@ -108,6 +108,10 @@ func (st *stringTable) Marshal(w io.Writer) error {
 	return nil
 }
 
+func (st *stringTable) Builder() *stringTableBuilder {
+	return newStringTableBuilderWithContents(st.strings)
+}
+
 // search is a copy of sort.Search specialised for uint32.
 //
 // Licensed under https://go.dev/LICENSE
@@ -143,6 +147,18 @@ func newStringTableBuilder(capacity int) *stringTableBuilder {
 	return &stringTableBuilder{1, strings}
 }
 
+func newStringTableBuilderWithContents(uniqueStrings []string) *stringTableBuilder {
+	stb := newStringTableBuilder(len(uniqueStrings))
+
+	for _, str := range uniqueStrings {
+		if str != "" {
+			stb.append(str)
+		}
+	}
+
+	return stb
+}
+
 // Add a string to the table.
 //
 // Adding the same string multiple times will only store it once.
@@ -156,10 +172,27 @@ func (stb *stringTableBuilder) Add(str string) (uint32, error) {
 		return offset, nil
 	}
 
-	offset = stb.length
+	return stb.append(str), nil
+}
+
+func (stb *stringTableBuilder) append(str string) uint32 {
+	offset := stb.length
 	stb.length += uint32(len(str)) + 1
 	stb.strings[str] = offset
+	return offset
+}
+
+// Lookup finds the offset of a string in the table.
+//
+// Returns an error if str hasn't been added yet.
+func (stb *stringTableBuilder) Lookup(str string) (uint32, error) {
+	offset, ok := stb.strings[str]
+	if !ok {
+		return 0, fmt.Errorf("string %q is not in table", str)
+	}
+
 	return offset, nil
+
 }
 
 // Length returns the length in bytes.

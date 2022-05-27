@@ -69,6 +69,11 @@ func (b *builder) Add(typ Type) (TypeID, error) {
 	return b.allocatedIDs[typ], nil
 }
 
+// AddString adds a string to the string table.
+func (b *builder) AddString(str string) (uint32, error) {
+	return b.strings.Add(str)
+}
+
 // Build the raw BTF blob.
 //
 // The returned slice is valid until the next call to Add.

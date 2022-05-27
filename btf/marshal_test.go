@@ -111,15 +111,4 @@ func BenchmarkBuildVmlinux(b *testing.B) {
 			}
 		}
 	})
-
-	b.Run("native", func(b *testing.B) {
-		b.ReportAllocs()
-
-		for i := 0; i < b.N; i++ {
-			_, err := spec.marshal(marshalOpts{ByteOrder: binary.LittleEndian})
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
 }
