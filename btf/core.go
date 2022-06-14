@@ -236,27 +236,15 @@ var errImpossibleRelocation = errors.New("impossible relocation")
 // The best target is determined by scoring: the less poisoning we have to do
 // the better the target is.
 func coreCalculateFixups(localSpec, targetSpec *Spec, local Type, targets []Type, relos []*CORERelocation) ([]COREFixup, error) {
-	localID, err := localSpec.TypeID(local)
-	if err != nil {
-		return nil, fmt.Errorf("local type ID: %w", err)
-	}
-	local = Copy(local, UnderlyingType)
-
 	bestScore := len(relos)
 	var bestFixups []COREFixup
 	for i := range targets {
-		targetID, err := targetSpec.TypeID(targets[i])
-		if err != nil {
-			return nil, fmt.Errorf("target type ID: %w", err)
-		}
-		target := Copy(targets[i], UnderlyingType)
-
 		score := 0 // lower is better
 		fixups := make([]COREFixup, 0, len(relos))
 		for _, relo := range relos {
-			fixup, err := coreCalculateFixup(localSpec.byteOrder, local, localID, target, targetID, relo)
+			fixup, err := coreCalculateFixup(localSpec, targetSpec, local, targets[i], relo)
 			if err != nil {
-				return nil, fmt.Errorf("target %s: %w", target, err)
+				return nil, fmt.Errorf("target %s: %w", targets[i], err)
 			}
 			if fixup.poison || fixup.isNonExistant() {
 				score++
@@ -305,7 +293,7 @@ func coreCalculateFixups(localSpec, targetSpec *Spec, local Type, targets []Type
 
 // coreCalculateFixup calculates the fixup for a single local type, target type
 // and relocation.
-func coreCalculateFixup(byteOrder binary.ByteOrder, local Type, localID TypeID, target Type, targetID TypeID, relo *CORERelocation) (COREFixup, error) {
+func coreCalculateFixup(localSpec, targetSpec *Spec, localBase, targetBase Type, relo *CORERelocation) (COREFixup, error) {
 	fixup := func(local, target uint32) (COREFixup, error) {
 		return COREFixup{kind: relo.kind, local: local, target: target}, nil
 	}
@@ -319,6 +307,9 @@ func coreCalculateFixup(byteOrder binary.ByteOrder, local Type, localID TypeID, 
 		return COREFixup{kind: relo.kind, poison: true}, nil
 	}
 	zero := COREFixup{}
+
+	local := Copy(localBase, UnderlyingType)
+	target := Copy(targetBase, UnderlyingType)
 
 	switch relo.kind {
 	case reloTypeIDTarget, reloTypeSize, reloTypeExists:
@@ -339,6 +330,14 @@ func coreCalculateFixup(byteOrder binary.ByteOrder, local Type, localID TypeID, 
 			return fixup(1, 1)
 
 		case reloTypeIDTarget:
+			localID, err := localSpec.TypeID(localBase)
+			if err != nil {
+				return COREFixup{}, fmt.Errorf("local type ID: %w", err)
+			}
+			targetID, err := targetSpec.TypeID(targetBase)
+			if err != nil {
+				return COREFixup{}, fmt.Errorf("target type ID: %w", err)
+			}
 			return fixup(uint32(localID), uint32(targetID))
 
 		case reloTypeSize:
@@ -427,7 +426,7 @@ func coreCalculateFixup(byteOrder binary.ByteOrder, local Type, localID TypeID, 
 
 		case reloFieldLShiftU64:
 			var target uint32
-			if byteOrder == binary.LittleEndian {
+			if targetSpec.byteOrder == binary.LittleEndian {
 				targetSize, err := targetField.sizeBits()
 				if err != nil {
 					return zero, err
