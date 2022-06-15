@@ -24,17 +24,27 @@ type builder struct {
 //
 // capacity is a hint for how many types the builder will be used for and may
 // be zero.
-func newBuilder(bo binary.ByteOrder, capacity int) *builder {
+//
+// strings are the initial contents of the string table and may be nil. Strings
+// should be unique.
+func newBuilder(bo binary.ByteOrder, capacity int, strings []string) *builder {
 	// Reserve space for the header and one btfType per struct. This is the
 	// smallest amount we can expect to use, since often used types carry extra
 	// data that has to be marshaled.
 	bufCap := btfHeaderLen + capacity*btfTypeLen
 
-	return &builder{
-		buf: bytes.NewBuffer(make([]byte, btfHeaderLen, bufCap)),
-		bo:  bo,
+	var stb *stringTableBuilder
+	if len(strings) > 0 {
+		stb = newStringTableBuilderWithContents(strings)
+	} else {
 		// For vmlinux, there is roughly one string per type.
-		strings:      newStringTableBuilder(capacity),
+		stb = newStringTableBuilder(capacity)
+	}
+
+	return &builder{
+		buf:          bytes.NewBuffer(make([]byte, btfHeaderLen, bufCap)),
+		bo:           bo,
+		strings:      stb,
 		allocatedIDs: make(map[Type]TypeID, capacity),
 		nextID:       1,
 	}

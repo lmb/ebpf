@@ -19,7 +19,7 @@ func TestBuild(t *testing.T) {
 		Encoding: Signed | Char,
 	}
 
-	b := newBuilder(internal.NativeEndian, 0)
+	b := newBuilder(internal.NativeEndian, 0, nil)
 
 	id, err := b.Add(typ)
 	qt.Assert(t, err, qt.IsNil)
@@ -62,7 +62,7 @@ func TestBuildVmlinux(t *testing.T) {
 		types[i], types[j] = types[j], types[i]
 	})
 
-	b := newBuilder(binary.LittleEndian, 0)
+	b := newBuilder(binary.LittleEndian, 0, nil)
 	b.StripFuncLinkage = haveFuncLinkage() != nil
 
 	for i, typ := range types {
@@ -97,7 +97,7 @@ func BenchmarkBuildVmlinux(b *testing.B) {
 		types := spec.types
 
 		for i := 0; i < b.N; i++ {
-			builder := newBuilder(binary.LittleEndian, len(types))
+			builder := newBuilder(binary.LittleEndian, len(types), nil)
 
 			for _, typ := range types {
 				if _, err := builder.Add(typ); err != nil {

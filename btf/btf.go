@@ -642,20 +642,13 @@ func NewHandle(spec *Spec) (*Handle, error) {
 		return nil, fmt.Errorf("can't load %s BTF on %s", spec.byteOrder, internal.NativeEndian)
 	}
 
-	stb := newBuilder(internal.NativeEndian, len(spec.types))
+	stb := newBuilder(internal.NativeEndian, len(spec.types), spec.strings.strings)
 	stb.StripFuncLinkage = haveFuncLinkage() != nil
 
 	for _, typ := range spec.types {
 		_, err := stb.Add(typ)
 		if err != nil {
 			return nil, fmt.Errorf("add %s: %w", typ, err)
-		}
-	}
-
-	for _, str := range spec.strings.strings {
-		_, err := stb.AddString(str)
-		if err != nil {
-			return nil, fmt.Errorf("add %q: %w", str, err)
 		}
 	}
 
