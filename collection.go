@@ -259,29 +259,16 @@ func (cs *CollectionSpec) Assign(to interface{}) error {
 //
 // Returns an error if any of the fields can't be found, or
 // if the same Map or Program is assigned multiple times.
-func (cs *CollectionSpec) LoadAndAssign(to interface{}, opts *CollectionOptions) (err error) {
+func (cs *CollectionSpec) LoadAndAssign(to interface{}, opts *CollectionOptions) error {
 	loader, err := newCollectionLoader(cs, opts)
 	if err != nil {
 		return err
 	}
-
-	assignedMaps := make(map[string]bool)
-	assignedProgs := make(map[string]bool)
-
-	defer func() {
-		if err != nil {
-			// If any error occurs during the loading process, make sure all
-			// previously-loaded Maps and Programs are closed before returning.
-			loader.closeAll()
-			return
-		}
-
-		// Close all Maps and Programs in the loader, except for the ones we've
-		// assigned to the caller-provided struct 'to'.
-		loader.closeFiltered(assignedMaps, assignedProgs)
-	}()
+	defer loader.cleanup()
 
 	// Support assigning Programs and Maps, lazy-loading the required objects.
+	assignedMaps := make(map[string]bool)
+	assignedProgs := make(map[string]bool)
 	getValue := func(typ reflect.Type, name string) (interface{}, error) {
 		switch typ {
 
@@ -309,7 +296,7 @@ func (cs *CollectionSpec) LoadAndAssign(to interface{}, opts *CollectionOptions)
 	}
 
 	// Evaluate the loader's objects after all (lazy)loading has taken place.
-	for n, m := range loader.maps {
+	for n, m := range loader.Maps {
 		switch m.typ {
 		case ProgramArray:
 			// Require all lazy-loaded ProgramArrays to be assigned to the given object.
@@ -324,6 +311,15 @@ func (cs *CollectionSpec) LoadAndAssign(to interface{}, opts *CollectionOptions)
 				return fmt.Errorf("ProgramArray %s must be assigned to prevent missed tail calls", n)
 			}
 		}
+	}
+
+	// Prevent loader.cleanup from closing assinged maps and programs.
+	for m := range assignedMaps {
+		delete(loader.Maps, m)
+	}
+
+	for p := range assignedProgs {
+		delete(loader.Programs, p)
 	}
 
 	return nil
@@ -350,24 +346,12 @@ func NewCollection(spec *CollectionSpec) (*Collection, error) {
 //
 // Omitting Collection.Close() during application shutdown is an error.
 // See the package documentation for details around Map and Program lifecycle.
-func NewCollectionWithOptions(spec *CollectionSpec, opts CollectionOptions) (_ *Collection, err error) {
+func NewCollectionWithOptions(spec *CollectionSpec, opts CollectionOptions) (*Collection, error) {
 	loader, err := newCollectionLoader(spec, &opts)
 	if err != nil {
 		return nil, err
 	}
-
-	defer func() {
-		if err != nil {
-			// If any error occurs during the loading process, make sure all
-			// previously-loaded Maps and Programs are closed before returning.
-			loader.closeAll()
-			return
-		}
-
-		// All loaded Maps and Programs are passed to the caller,
-		// don't close any of them.
-		loader.close()
-	}()
+	defer loader.cleanup()
 
 	// Create maps first, as their fds need to be linked into programs.
 	for mapName := range spec.Maps {
@@ -392,7 +376,9 @@ func NewCollectionWithOptions(spec *CollectionSpec, opts CollectionOptions) (_ *
 		return nil, err
 	}
 
-	maps, progs := loader.maps, loader.programs
+	// Prevent loader.cleanup from closing maps and programs.
+	maps, progs := loader.Maps, loader.Programs
+	loader.Maps, loader.Programs = nil, nil
 
 	return &Collection{
 		progs,
@@ -431,10 +417,18 @@ func (hc handleCache) close() {
 }
 
 type collectionLoader struct {
-	coll     *CollectionSpec
-	opts     *CollectionOptions
-	maps     map[string]*Map
-	programs map[string]*Program
+	coll *CollectionSpec
+	opts *CollectionOptions
+	// All the maps loaded via loadMap so far.
+	//
+	// Remove items from the map to prevent [collectionLoader.cleanup] from closing
+	// the maps.
+	Maps map[string]*Map
+	// All the programs loaded via loadProgram so far.
+	//
+	// Remove items from the map to prevent [collectionLoader.cleanup] from closing
+	// the programs.
+	Programs map[string]*Program
 	handles  *handleCache
 }
 
@@ -464,38 +458,21 @@ func newCollectionLoader(coll *CollectionSpec, opts *CollectionOptions) (*collec
 	}, nil
 }
 
-// close the resources associated with the collectionLoader,
-// except for Maps and Programs.
-func (cl *collectionLoader) close() {
+// cleanup cleans up all resources left over in the collectionLoader.
+// Call finalize() when Map and Program creation/population is successful
+// to prevent them from getting closed.
+func (cl *collectionLoader) cleanup() {
 	cl.handles.close()
-}
-
-// closeAll bails out of the loading process and closes all
-// Maps and Programs associated with the collectionLoader.
-func (cl *collectionLoader) closeAll() {
-	cl.close()
-	cl.closeFiltered(nil, nil)
-}
-
-// closeFiltered closes all Maps and Programs associated with the loader,
-// except for the ones specified in the maps and progs arguments.
-func (cl *collectionLoader) closeFiltered(maps, progs map[string]bool) {
-	cl.close()
-
-	for name, m := range cl.maps {
-		if !maps[name] {
-			m.Close()
-		}
+	for _, m := range cl.Maps {
+		m.Close()
 	}
-	for name, p := range cl.programs {
-		if !progs[name] {
-			p.Close()
-		}
+	for _, p := range cl.Programs {
+		p.Close()
 	}
 }
 
 func (cl *collectionLoader) loadMap(mapName string) (*Map, error) {
-	if m := cl.maps[mapName]; m != nil {
+	if m := cl.Maps[mapName]; m != nil {
 		return m, nil
 	}
 
@@ -515,7 +492,7 @@ func (cl *collectionLoader) loadMap(mapName string) (*Map, error) {
 			return nil, err
 		}
 
-		cl.maps[mapName] = m
+		cl.Maps[mapName] = m
 		return m, nil
 	}
 
@@ -524,12 +501,12 @@ func (cl *collectionLoader) loadMap(mapName string) (*Map, error) {
 		return nil, fmt.Errorf("map %s: %w", mapName, err)
 	}
 
-	cl.maps[mapName] = m
+	cl.Maps[mapName] = m
 	return m, nil
 }
 
 func (cl *collectionLoader) loadProgram(progName string) (*Program, error) {
-	if prog := cl.programs[progName]; prog != nil {
+	if prog := cl.Programs[progName]; prog != nil {
 		return prog, nil
 	}
 
@@ -581,12 +558,12 @@ func (cl *collectionLoader) loadProgram(progName string) (*Program, error) {
 		return nil, fmt.Errorf("program %s: %w", progName, err)
 	}
 
-	cl.programs[progName] = prog
+	cl.Programs[progName] = prog
 	return prog, nil
 }
 
 func (cl *collectionLoader) populateMaps() error {
-	for mapName, m := range cl.maps {
+	for mapName, m := range cl.Maps {
 		mapSpec, ok := cl.coll.Maps[mapName]
 		if !ok {
 			return fmt.Errorf("missing map spec %s", mapName)
