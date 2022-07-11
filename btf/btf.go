@@ -668,7 +668,7 @@ func NewHandle(spec *Spec) (*Handle, error) {
 
 	fd, err := sys.BtfLoad(attr)
 	if err != nil {
-		logBuf := make([]byte, 64*1024)
+		logBuf := make([]byte, 10*1024*1024)
 		attr.BtfLogBuf = sys.NewSlicePointer(logBuf)
 		attr.BtfLogSize = uint32(len(logBuf))
 		attr.BtfLogLevel = 1
