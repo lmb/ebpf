@@ -166,7 +166,7 @@ func (b *builder) deflateType(typ Type) (err error) {
 
 	case *Enum:
 		raw.SetKind(kindEnum)
-		raw.SetSize(v.size())
+		raw.SetSize(v.Size)
 		raw.SetVlen(len(v.Values))
 		raw.data, err = b.convertEnumValues(v.Values)
 
