@@ -798,29 +798,24 @@ func TestMapQueue(t *testing.T) {
 	}
 	defer m.Close()
 
-	for _, v := range []uint32{42, 4242} {
+	values := []uint32{42, 4242}
+	for _, v := range values {
 		if err := m.Put(nil, v); err != nil {
 			t.Fatalf("Can't put %d: %s", v, err)
 		}
 	}
 
-	var v uint32
-	if err := m.LookupAndDelete(nil, &v); err != nil {
-		t.Fatal("Can't lookup and delete element:", err)
-	}
-	if v != 42 {
-		t.Error("Want value 42, got", v)
-	}
-
-	v = 0
-	if err := m.LookupAndDelete(nil, unsafe.Pointer(&v)); err != nil {
-		t.Fatal("Can't lookup and delete element using unsafe.Pointer:", err)
-	}
-	if v != 4242 {
-		t.Error("Want value 4242, got", v)
+	var have uint32
+	for i, want := range values {
+		if err := m.LookupAndDelete(nil, &have); err != nil {
+			t.Fatal("Can't lookup and delete element:", err)
+		}
+		if have != want {
+			t.Errorf("Want %dth value to be %v, got %v", i, want, have)
+		}
 	}
 
-	if err := m.LookupAndDelete(nil, &v); !errors.Is(err, ErrKeyNotExist) {
+	if err := m.LookupAndDelete(nil, &have); !errors.Is(err, ErrKeyNotExist) {
 		t.Fatal("Lookup and delete on empty Queue:", err)
 	}
 }
@@ -1463,42 +1458,35 @@ func TestMapMarshalUnsafe(t *testing.T) {
 	}
 	defer m.Close()
 
-	key := uint32(1)
-	value := uint32(42)
+	var key, value uint32
 
-	if err := m.Put(unsafe.Pointer(&key), unsafe.Pointer(&value)); err != nil {
-		t.Fatal(err)
+	if err := m.Put(unsafe.Pointer(&key), value); err == nil {
+		t.Fatal("Put should refuse unsafe key")
 	}
-
-	var res uint32
-	if err := m.Lookup(unsafe.Pointer(&key), unsafe.Pointer(&res)); err != nil {
-		t.Fatal("Can't get item:", err)
+	if err := m.Put(key, unsafe.Pointer(&value)); err == nil {
+		t.Fatal("Put should refuse unsafe value")
 	}
 
-	var sum uint32
-	iter := m.Iterate()
-	for iter.Next(&key, unsafe.Pointer(&res)) {
-		sum += res
+	if err := m.Lookup(unsafe.Pointer(&key), &value); err == nil {
+		t.Fatal("Lookup should refuse unsafe key")
 	}
-	if err := iter.Err(); err != nil {
-		t.Fatal(err)
+	if err := m.Lookup(key, unsafe.Pointer(&value)); err == nil {
+		t.Fatal("Lookup should refuse unsafe value")
 	}
 
-	if res != 42 {
-		t.Fatalf("Expected 42, got %d", res)
+	if err := m.Put(key, value); err != nil {
+		t.Fatal("Can't add key:", err)
 	}
 
-	iter = m.Iterate()
-	iter.Next(unsafe.Pointer(&key), &res)
-	if err := iter.Err(); err != nil {
-		t.Error(err)
+	if iter := m.Iterate(); iter.Next(unsafe.Pointer(&key), &value) || iter.Err() == nil {
+		t.Fatal("Iterator.Next should refuse unsafe key")
 	}
-	if key != 1 {
-		t.Errorf("Expected key 1, got %d", key)
+	if iter := m.Iterate(); iter.Next(&key, unsafe.Pointer(&value)) || iter.Err() == nil {
+		t.Fatal("Iterator.Next should refuse unsafe value")
 	}
 
-	if err := m.Delete(unsafe.Pointer(&key)); err != nil {
-		t.Fatal("Can't delete:", err)
+	if err := m.Delete(unsafe.Pointer(&key)); err == nil {
+		t.Fatal("Delete should refuse unsafe key")
 	}
 }
 
@@ -1798,7 +1786,7 @@ func BenchmarkMarshalling(b *testing.B) {
 		var value benchValue
 
 		for i := 0; i < b.N; i++ {
-			err := m.Lookup(unsafe.Pointer(&key), &value)
+			err := m.Lookup(key, &value)
 			if err != nil {
 				b.Fatal("Can't get key:", err)
 			}
@@ -1812,21 +1800,7 @@ func BenchmarkMarshalling(b *testing.B) {
 		var value customBenchValue
 
 		for i := 0; i < b.N; i++ {
-			err := m.Lookup(unsafe.Pointer(&key), &value)
-			if err != nil {
-				b.Fatal("Can't get key:", err)
-			}
-		}
-	})
-
-	b.Run("unsafe", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-
-		var value benchValue
-
-		for i := 0; i < b.N; i++ {
-			err := m.Lookup(unsafe.Pointer(&key), unsafe.Pointer(&value))
+			err := m.Lookup(key, &value)
 			if err != nil {
 				b.Fatal("Can't get key:", err)
 			}
@@ -1894,7 +1868,7 @@ func BenchmarkMap(b *testing.B) {
 		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
-			err := m.Lookup(unsafe.Pointer(&key), unsafe.Pointer(&value))
+			err := m.Lookup(key, value)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -1907,7 +1881,7 @@ func BenchmarkMap(b *testing.B) {
 		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
-			err := m.Update(unsafe.Pointer(&key), unsafe.Pointer(&value), UpdateAny)
+			err := m.Update(key, value, UpdateAny)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -1920,7 +1894,7 @@ func BenchmarkMap(b *testing.B) {
 		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
-			err := m.NextKey(nil, unsafe.Pointer(&key))
+			err := m.NextKey(nil, key)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -1933,7 +1907,7 @@ func BenchmarkMap(b *testing.B) {
 		b.ReportAllocs()
 
 		for i := 0; i < b.N; i++ {
-			err := m.Delete(unsafe.Pointer(&key))
+			err := m.Delete(key)
 			if err != nil && !errors.Is(err, ErrKeyNotExist) {
 				b.Fatal(err)
 			}
@@ -1990,41 +1964,7 @@ func ExampleMap_perCPU() {
 	}
 }
 
-// It is possible to use unsafe.Pointer to avoid marshalling
-// and copy overhead. It is the resposibility of the caller to ensure
-// the correct size of unsafe.Pointers.
-//
-// Note that using unsafe.Pointer is only marginally faster than
-// implementing Marshaler on the type.
-func ExampleMap_zeroCopy() {
-	hash, err := NewMap(&MapSpec{
-		Type:       Hash,
-		KeySize:    5,
-		ValueSize:  4,
-		MaxEntries: 10,
-	})
-	if err != nil {
-		panic(err)
-	}
-	defer hash.Close()
-
-	key := [5]byte{'h', 'e', 'l', 'l', 'o'}
-	value := uint32(23)
-
-	if err := hash.Put(unsafe.Pointer(&key), unsafe.Pointer(&value)); err != nil {
-		panic(err)
-	}
-
-	value = 0
-	if err := hash.Lookup(unsafe.Pointer(&key), unsafe.Pointer(&value)); err != nil {
-		panic("can't get value:" + err.Error())
-	}
-
-	fmt.Printf("The value is: %d\n", value)
-	// Output: The value is: 23
-}
-
-func ExampleMap_NextKey() {
+func createHash() *Map {
 	hash, err := NewMap(&MapSpec{
 		Type:       Hash,
 		KeySize:    5,

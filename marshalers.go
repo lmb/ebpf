@@ -7,31 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"runtime"
 	"sync"
-	"unsafe"
 
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
 )
-
-// marshalPtr converts an arbitrary value into a pointer suitable
-// to be passed to the kernel.
-//
-// As an optimization, it returns the original value if it is an
-// unsafe.Pointer.
-func marshalPtr(data interface{}, length int) (sys.Pointer, error) {
-	if ptr, ok := data.(unsafe.Pointer); ok {
-		return sys.NewPointer(ptr), nil
-	}
-
-	buf, err := marshalBytes(data, length)
-	if err != nil {
-		return sys.Pointer{}, err
-	}
-
-	return sys.NewSlicePointer(buf), nil
-}
 
 // marshalBytes converts an arbitrary value into a byte buffer.
 //
@@ -52,8 +31,6 @@ func marshalBytes(data interface{}, length int) (buf []byte, err error) {
 		buf = []byte(value)
 	case []byte:
 		buf = value
-	case unsafe.Pointer:
-		err = errors.New("can't marshal from unsafe.Pointer")
 	case Map, *Map, Program, *Program:
 		err = fmt.Errorf("can't marshal %T", value)
 	default:
@@ -74,15 +51,6 @@ func marshalBytes(data interface{}, length int) (buf []byte, err error) {
 	return buf, nil
 }
 
-func makeBuffer(dst interface{}, length int) (sys.Pointer, []byte) {
-	if ptr, ok := dst.(unsafe.Pointer); ok {
-		return sys.NewPointer(ptr), nil
-	}
-
-	buf := make([]byte, length)
-	return sys.NewSlicePointer(buf), buf
-}
-
 var bytesReaderPool = sync.Pool{
 	New: func() interface{} {
 		return new(bytes.Reader)
@@ -98,11 +66,6 @@ var bytesReaderPool = sync.Pool{
 // unnecessary heap allocations as happening in the default case.
 func unmarshalBytes(data interface{}, buf []byte) error {
 	switch value := data.(type) {
-	case unsafe.Pointer:
-		dst := unsafe.Slice((*byte)(value), len(buf))
-		copy(dst, buf)
-		runtime.KeepAlive(value)
-		return nil
 	case Map, *Map, Program, *Program:
 		return fmt.Errorf("can't unmarshal into %T", value)
 	case encoding.BinaryUnmarshaler:
@@ -158,21 +121,21 @@ func unmarshalBytes(data interface{}, buf []byte) error {
 // Values are initialized to zero if the slice has less elements than CPUs.
 //
 // slice must have a type like []elementType.
-func marshalPerCPUValue(slice interface{}, elemLength int) (sys.Pointer, error) {
+func marshalPerCPUValue(slice interface{}, elemLength int) ([]byte, error) {
 	sliceType := reflect.TypeOf(slice)
 	if sliceType.Kind() != reflect.Slice {
-		return sys.Pointer{}, errors.New("per-CPU value requires slice")
+		return nil, errors.New("per-CPU value requires slice")
 	}
 
 	possibleCPUs, err := internal.PossibleCPUs()
 	if err != nil {
-		return sys.Pointer{}, err
+		return nil, err
 	}
 
 	sliceValue := reflect.ValueOf(slice)
 	sliceLen := sliceValue.Len()
 	if sliceLen > possibleCPUs {
-		return sys.Pointer{}, fmt.Errorf("per-CPU value exceeds number of CPUs")
+		return nil, fmt.Errorf("per-CPU value exceeds number of CPUs")
 	}
 
 	alignedElemLength := internal.Align(elemLength, 8)
@@ -182,14 +145,14 @@ func marshalPerCPUValue(slice interface{}, elemLength int) (sys.Pointer, error) 
 		elem := sliceValue.Index(i).Interface()
 		elemBytes, err := marshalBytes(elem, elemLength)
 		if err != nil {
-			return sys.Pointer{}, err
+			return nil, err
 		}
 
 		offset := i * alignedElemLength
 		copy(buf[offset:offset+elemLength], elemBytes)
 	}
 
-	return sys.NewSlicePointer(buf), nil
+	return buf, nil
 }
 
 // unmarshalPerCPUValue decodes a buffer into a slice containing one value per

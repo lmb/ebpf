@@ -550,8 +550,8 @@ const LookupLock MapLookupFlags = 4
 //
 // Returns an error if the key doesn't exist, see ErrKeyNotExist.
 func (m *Map) Lookup(key, valueOut interface{}) error {
-	valuePtr, valueBytes := makeBuffer(valueOut, m.fullValueSize)
-	if err := m.lookup(key, valuePtr, 0); err != nil {
+	valueBytes := make([]byte, m.fullValueSize)
+	if err := m.lookup(key, valueBytes, 0); err != nil {
 		return err
 	}
 
@@ -569,8 +569,8 @@ func (m *Map) Lookup(key, valueOut interface{}) error {
 //
 // Returns an error if the key doesn't exist, see ErrKeyNotExist.
 func (m *Map) LookupWithFlags(key, valueOut interface{}, flags MapLookupFlags) error {
-	valuePtr, valueBytes := makeBuffer(valueOut, m.fullValueSize)
-	if err := m.lookup(key, valuePtr, flags); err != nil {
+	valueBytes := make([]byte, m.fullValueSize)
+	if err := m.lookup(key, valueBytes, flags); err != nil {
 		return err
 	}
 
@@ -581,7 +581,40 @@ func (m *Map) LookupWithFlags(key, valueOut interface{}, flags MapLookupFlags) e
 //
 // Returns ErrKeyNotExist if the key doesn't exist.
 func (m *Map) LookupAndDelete(key, valueOut interface{}) error {
-	return m.lookupAndDelete(key, valueOut, 0)
+	return m.LookupAndDeleteWithFlags(key, valueOut, 0)
+}
+
+// LookupBytes gets a value from Map.
+//
+// Returns a nil value if a key doesn't exist.
+func (m *Map) LookupBytes(key interface{}) ([]byte, error) {
+	valueBytes := make([]byte, m.fullValueSize)
+
+	err := m.lookup(key, valueBytes, 0)
+	if errors.Is(err, ErrKeyNotExist) {
+		return nil, nil
+	}
+
+	return valueBytes, err
+}
+
+func (m *Map) lookup(key interface{}, valueOut []byte, flags MapLookupFlags) error {
+	keyBytes, err := m.marshalKey(key)
+	if err != nil {
+		return err
+	}
+
+	attr := sys.MapLookupElemAttr{
+		MapFd: m.fd.Uint(),
+		Key:   sys.NewSlicePointer(keyBytes),
+		Value: sys.NewSlicePointer(valueOut),
+		Flags: uint64(flags),
+	}
+
+	if err = sys.MapLookupElem(&attr); err != nil {
+		return fmt.Errorf("lookup: %w", wrapMapError(err))
+	}
+	return nil
 }
 
 // LookupAndDeleteWithFlags retrieves and deletes a value from a Map.
@@ -592,55 +625,16 @@ func (m *Map) LookupAndDelete(key, valueOut interface{}) error {
 //
 // Returns ErrKeyNotExist if the key doesn't exist.
 func (m *Map) LookupAndDeleteWithFlags(key, valueOut interface{}, flags MapLookupFlags) error {
-	return m.lookupAndDelete(key, valueOut, flags)
-}
+	keyBytes, err := m.marshalKey(key)
+	if err != nil {
+		return err
+	}
 
-// LookupBytes gets a value from Map.
-//
-// Returns a nil value if a key doesn't exist.
-func (m *Map) LookupBytes(key interface{}) ([]byte, error) {
 	valueBytes := make([]byte, m.fullValueSize)
-	valuePtr := sys.NewSlicePointer(valueBytes)
-
-	err := m.lookup(key, valuePtr, 0)
-	if errors.Is(err, ErrKeyNotExist) {
-		return nil, nil
-	}
-
-	return valueBytes, err
-}
-
-func (m *Map) lookup(key interface{}, valueOut sys.Pointer, flags MapLookupFlags) error {
-	keyPtr, err := m.marshalKey(key)
-	if err != nil {
-		return fmt.Errorf("can't marshal key: %w", err)
-	}
-
-	attr := sys.MapLookupElemAttr{
-		MapFd: m.fd.Uint(),
-		Key:   keyPtr,
-		Value: valueOut,
-		Flags: uint64(flags),
-	}
-
-	if err = sys.MapLookupElem(&attr); err != nil {
-		return fmt.Errorf("lookup: %w", wrapMapError(err))
-	}
-	return nil
-}
-
-func (m *Map) lookupAndDelete(key, valueOut interface{}, flags MapLookupFlags) error {
-	valuePtr, valueBytes := makeBuffer(valueOut, m.fullValueSize)
-
-	keyPtr, err := m.marshalKey(key)
-	if err != nil {
-		return fmt.Errorf("can't marshal key: %w", err)
-	}
-
 	attr := sys.MapLookupAndDeleteElemAttr{
 		MapFd: m.fd.Uint(),
-		Key:   keyPtr,
-		Value: valuePtr,
+		Key:   sys.NewSlicePointer(keyBytes),
+		Value: sys.NewSlicePointer(valueBytes),
 		Flags: uint64(flags),
 	}
 
@@ -676,20 +670,20 @@ func (m *Map) Put(key, value interface{}) error {
 
 // Update changes the value of a key.
 func (m *Map) Update(key, value interface{}, flags MapUpdateFlags) error {
-	keyPtr, err := m.marshalKey(key)
+	keyBytes, err := m.marshalKey(key)
 	if err != nil {
-		return fmt.Errorf("can't marshal key: %w", err)
+		return err
 	}
 
-	valuePtr, err := m.marshalValue(value)
+	valueBytes, err := m.marshalValue(value)
 	if err != nil {
-		return fmt.Errorf("can't marshal value: %w", err)
+		return err
 	}
 
 	attr := sys.MapUpdateElemAttr{
 		MapFd: m.fd.Uint(),
-		Key:   keyPtr,
-		Value: valuePtr,
+		Key:   sys.NewSlicePointer(keyBytes),
+		Value: sys.NewSlicePointer(valueBytes),
 		Flags: uint64(flags),
 	}
 
@@ -704,14 +698,14 @@ func (m *Map) Update(key, value interface{}, flags MapUpdateFlags) error {
 //
 // Returns ErrKeyNotExist if the key does not exist.
 func (m *Map) Delete(key interface{}) error {
-	keyPtr, err := m.marshalKey(key)
+	keyBytes, err := m.marshalKey(key)
 	if err != nil {
-		return fmt.Errorf("can't marshal key: %w", err)
+		return err
 	}
 
 	attr := sys.MapDeleteElemAttr{
 		MapFd: m.fd.Uint(),
-		Key:   keyPtr,
+		Key:   sys.NewSlicePointer(keyBytes),
 	}
 
 	if err = sys.MapDeleteElem(&attr); err != nil {
@@ -726,16 +720,12 @@ func (m *Map) Delete(key interface{}) error {
 //
 // Returns ErrKeyNotExist if there is no next key.
 func (m *Map) NextKey(key, nextKeyOut interface{}) error {
-	nextKeyPtr, nextKeyBytes := makeBuffer(nextKeyOut, int(m.keySize))
-
-	if err := m.nextKey(key, nextKeyPtr); err != nil {
+	nextKeyBytes := make([]byte, m.keySize)
+	if err := m.nextKey(key, nextKeyBytes); err != nil {
 		return err
 	}
 
-	if err := m.unmarshalKey(nextKeyOut, nextKeyBytes); err != nil {
-		return fmt.Errorf("can't unmarshal next key: %w", err)
-	}
-	return nil
+	return m.unmarshalKey(nextKeyOut, nextKeyBytes)
 }
 
 // NextKeyBytes returns the key following an initial key as a byte slice.
@@ -747,9 +737,7 @@ func (m *Map) NextKey(key, nextKeyOut interface{}) error {
 // Returns nil if there are no more keys.
 func (m *Map) NextKeyBytes(key interface{}) ([]byte, error) {
 	nextKey := make([]byte, m.keySize)
-	nextKeyPtr := sys.NewSlicePointer(nextKey)
-
-	err := m.nextKey(key, nextKeyPtr)
+	err := m.nextKey(key, nextKey)
 	if errors.Is(err, ErrKeyNotExist) {
 		return nil, nil
 	}
@@ -757,23 +745,23 @@ func (m *Map) NextKeyBytes(key interface{}) ([]byte, error) {
 	return nextKey, err
 }
 
-func (m *Map) nextKey(key interface{}, nextKeyOut sys.Pointer) error {
+func (m *Map) nextKey(key interface{}, nextKeyOut []byte) error {
 	var (
-		keyPtr sys.Pointer
-		err    error
+		keyBytes []byte
+		err      error
 	)
 
 	if key != nil {
-		keyPtr, err = m.marshalKey(key)
+		keyBytes, err = m.marshalKey(key)
 		if err != nil {
-			return fmt.Errorf("can't marshal key: %w", err)
+			return err
 		}
 	}
 
 	attr := sys.MapGetNextKeyAttr{
 		MapFd:   m.fd.Uint(),
-		Key:     keyPtr,
-		NextKey: nextKeyOut,
+		Key:     sys.NewSlicePointer(keyBytes),
+		NextKey: sys.NewSlicePointer(nextKeyOut),
 	}
 
 	if err = sys.MapGetNextKey(&attr); err != nil {
@@ -813,7 +801,6 @@ func (m *Map) guessNonExistentKey() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	valuePtr := sys.NewSlicePointer(page)
 
 	randKey := make([]byte, int(m.keySize))
 
@@ -842,7 +829,7 @@ func (m *Map) guessNonExistentKey() ([]byte, error) {
 			rand.New(rand.NewSource(time.Now().UnixNano())).Read(randKey)
 		}
 
-		err := m.lookup(randKey, valuePtr, 0)
+		err := m.lookup(randKey, page, 0)
 		if errors.Is(err, ErrKeyNotExist) {
 			return randKey, nil
 		}
@@ -900,17 +887,15 @@ func (m *Map) batchLookup(cmd sys.Cmd, startKey, nextKeyOut, keysOut, valuesOut 
 		return 0, fmt.Errorf("keysOut and valuesOut must be the same length")
 	}
 	keyBuf := make([]byte, count*int(m.keySize))
-	keyPtr := sys.NewSlicePointer(keyBuf)
 	valueBuf := make([]byte, count*int(m.fullValueSize))
-	valuePtr := sys.NewSlicePointer(valueBuf)
-	nextPtr, nextBuf := makeBuffer(nextKeyOut, int(m.keySize))
+	nextBuf := make([]byte, m.keySize)
 
 	attr := sys.MapLookupBatchAttr{
 		MapFd:    m.fd.Uint(),
-		Keys:     keyPtr,
-		Values:   valuePtr,
+		Keys:     sys.NewSlicePointer(keyBuf),
+		Values:   sys.NewSlicePointer(valueBuf),
 		Count:    uint32(count),
-		OutBatch: nextPtr,
+		OutBatch: sys.NewSlicePointer(nextBuf),
 	}
 
 	if opts != nil {
@@ -920,10 +905,12 @@ func (m *Map) batchLookup(cmd sys.Cmd, startKey, nextKeyOut, keysOut, valuesOut 
 
 	var err error
 	if startKey != nil {
-		attr.InBatch, err = marshalPtr(startKey, int(m.keySize))
+		startKeyBytes, err := marshalBytes(startKey, int(m.keySize))
 		if err != nil {
 			return 0, err
 		}
+
+		attr.InBatch = sys.NewSlicePointer(startKeyBytes)
 	}
 
 	_, sysErr := sys.BPF(cmd, unsafe.Pointer(&attr), unsafe.Sizeof(attr))
@@ -967,27 +954,25 @@ func (m *Map) BatchUpdate(keys, values interface{}, opts *BatchOptions) (int, er
 	if valuesValue.Kind() != reflect.Slice {
 		return 0, fmt.Errorf("values must be a slice")
 	}
-	var (
-		count    = keysValue.Len()
-		valuePtr sys.Pointer
-		err      error
-	)
+
+	count := keysValue.Len()
 	if count != valuesValue.Len() {
 		return 0, fmt.Errorf("keys and values must be the same length")
 	}
-	keyPtr, err := marshalPtr(keys, count*int(m.keySize))
+
+	keysBytes, err := marshalBytes(keys, count*int(m.keySize))
 	if err != nil {
 		return 0, err
 	}
-	valuePtr, err = marshalPtr(values, count*int(m.valueSize))
+	valuesBytes, err := marshalBytes(values, count*int(m.valueSize))
 	if err != nil {
 		return 0, err
 	}
 
 	attr := sys.MapUpdateBatchAttr{
 		MapFd:  m.fd.Uint(),
-		Keys:   keyPtr,
-		Values: valuePtr,
+		Keys:   sys.NewSlicePointer(keysBytes),
+		Values: sys.NewSlicePointer(valuesBytes),
 		Count:  uint32(count),
 	}
 	if opts != nil {
@@ -1017,14 +1002,14 @@ func (m *Map) BatchDelete(keys interface{}, opts *BatchOptions) (int, error) {
 		return 0, fmt.Errorf("keys must be a slice")
 	}
 	count := keysValue.Len()
-	keyPtr, err := marshalPtr(keys, count*int(m.keySize))
+	keysBytes, err := marshalBytes(keys, count*int(m.keySize))
 	if err != nil {
 		return 0, fmt.Errorf("cannot marshal keys: %v", err)
 	}
 
 	attr := sys.MapDeleteBatchAttr{
 		MapFd: m.fd.Uint(),
-		Keys:  keyPtr,
+		Keys:  sys.NewSlicePointer(keysBytes),
 		Count: uint32(count),
 	}
 
@@ -1170,69 +1155,68 @@ func (m *Map) finalize(spec *MapSpec) error {
 	return nil
 }
 
-func (m *Map) marshalKey(data interface{}) (sys.Pointer, error) {
+func (m *Map) marshalKey(data interface{}) ([]byte, error) {
 	if data == nil {
 		if m.keySize == 0 {
 			// Queues have a key length of zero, so passing nil here is valid.
-			return sys.NewPointer(nil), nil
+			return nil, nil
 		}
-		return sys.Pointer{}, errors.New("can't use nil as key of map")
+		return nil, errors.New("can't use nil as key of map")
 	}
 
-	return marshalPtr(data, int(m.keySize))
+	bytes, err := marshalBytes(data, int(m.keySize))
+	if err != nil {
+		return nil, fmt.Errorf("marshal key: %w", err)
+	}
+	return bytes, err
 }
 
 func (m *Map) unmarshalKey(data interface{}, buf []byte) error {
-	if buf == nil {
-		// This is from a makeBuffer call, nothing do do here.
-		return nil
+	if err := unmarshalBytes(data, buf); err != nil {
+		return fmt.Errorf("unmarshal key: %w", err)
 	}
-
-	return unmarshalBytes(data, buf)
+	return nil
 }
 
-func (m *Map) marshalValue(data interface{}) (sys.Pointer, error) {
+func (m *Map) marshalValue(data interface{}) (buf []byte, err error) {
 	if m.typ.hasPerCPUValue() {
-		return marshalPerCPUValue(data, int(m.valueSize))
+		buf, err = marshalPerCPUValue(data, int(m.valueSize))
+		if err != nil {
+			return nil, fmt.Errorf("marshal per-CPU value: %w", err)
+		}
+		return buf, nil
 	}
-
-	var (
-		buf []byte
-		err error
-	)
 
 	switch value := data.(type) {
 	case *Map:
 		if !m.typ.canStoreMap() {
-			return sys.Pointer{}, fmt.Errorf("can't store map in %s", m.typ)
+			return nil, fmt.Errorf("can't store map in %s", m.typ)
 		}
 		buf, err = marshalMap(value, int(m.valueSize))
 
 	case *Program:
 		if !m.typ.canStoreProgram() {
-			return sys.Pointer{}, fmt.Errorf("can't store program in %s", m.typ)
+			return nil, fmt.Errorf("can't store program in %s", m.typ)
 		}
 		buf, err = marshalProgram(value, int(m.valueSize))
 
 	default:
-		return marshalPtr(data, int(m.valueSize))
+		buf, err = marshalBytes(data, int(m.valueSize))
 	}
 
 	if err != nil {
-		return sys.Pointer{}, err
+		return nil, fmt.Errorf("marshal value: %w", err)
 	}
 
-	return sys.NewSlicePointer(buf), nil
+	return buf, nil
 }
 
 func (m *Map) unmarshalValue(value interface{}, buf []byte) error {
-	if buf == nil {
-		// This is from a makeBuffer call, nothing do do here.
-		return nil
-	}
-
 	if m.typ.hasPerCPUValue() {
-		return unmarshalPerCPUValue(value, int(m.valueSize), buf)
+		if err := unmarshalPerCPUValue(value, int(m.valueSize), buf); err != nil {
+			return fmt.Errorf("unmarshal per-CPU value: %w", err)
+		}
+		return nil
 	}
 
 	switch value := value.(type) {
@@ -1281,7 +1265,10 @@ func (m *Map) unmarshalValue(value interface{}, buf []byte) error {
 		return errors.New("require pointer to *Program")
 	}
 
-	return unmarshalBytes(value, buf)
+	if err := unmarshalBytes(value, buf); err != nil {
+		return fmt.Errorf("unmarshal value: %w", err)
+	}
+	return nil
 }
 
 // LoadPinnedMap loads a Map from a BPF file.
