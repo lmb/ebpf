@@ -87,6 +87,30 @@ limitTypes:
 	h.Close()
 }
 
+func TestEncodeVMlinuxPerCPU(t *testing.T) {
+	types := vmlinuxSpec(t)
+
+	var percpu *Datasec
+	if err := types.TypeByName(".data..percpu", &percpu); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	qt.Assert(t, marshalTypes(&buf, []Type{&Void{}, percpu}, nil, nil), qt.IsNil)
+
+	rebuilt, err := loadRawSpec(bytes.NewReader(buf.Bytes()), binary.LittleEndian, nil, nil)
+	qt.Assert(t, err, qt.IsNil, qt.Commentf("round tripping BTF failed"))
+
+	if n := len(rebuilt.types); n > math.MaxUint16 {
+		t.Logf("Rebuilt BTF contains %d types which exceeds uint16, test may fail on older kernels", n)
+	}
+
+	h, err := NewHandle(rebuilt)
+	testutils.SkipIfNotSupported(t, err)
+	qt.Assert(t, err, qt.IsNil, qt.Commentf("loading rebuilt BTF failed"))
+	h.Close()
+}
+
 func BenchmarkBuildVmlinux(b *testing.B) {
 	types := vmlinuxTestdataSpec(b).types
 

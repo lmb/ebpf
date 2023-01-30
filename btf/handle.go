@@ -72,7 +72,7 @@ func newHandleFromRawBTF(btf []byte) (*Handle, error) {
 		return nil, err
 	}
 
-	logBuf := make([]byte, 64*1024)
+	logBuf := make([]byte, 16777215)
 	attr.BtfLogBuf = sys.NewSlicePointer(logBuf)
 	attr.BtfLogSize = uint32(len(logBuf))
 	attr.BtfLogLevel = 1
