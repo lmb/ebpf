@@ -500,8 +500,8 @@ func TestPerfReaderOverwritableOverWritten(t *testing.T) {
 	// written to the perf buffer.
 
 	sampleNr := len(sampleSizes)
-	if len(readSamples) != sampleNr - 1 {
-		t.Fatalf("Expected %d events but got %d", sampleNr - 1, len(readSamples))
+	if len(readSamples) != sampleNr-1 {
+		t.Fatalf("Expected %d events but got %d", sampleNr-1, len(readSamples))
 	}
 
 	for i, value := range readSamples {

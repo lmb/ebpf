@@ -124,40 +124,32 @@ type ringReader interface {
 	Read(p []byte) (int, error)
 }
 
-type forwardReader struct{
-	meta         *unix.PerfEventMmapPage
-	head, tail   uint64
-	mask         uint64
-	ring         []byte
+type forwardReader struct {
+	meta       *unix.PerfEventMmapPage
+	head, tail uint64
+	mask       uint64
+	ring       []byte
 }
 
-type reverseReader struct{
-	meta         *unix.PerfEventMmapPage
-	// head is the position where the kernel last wrote data, we only read this
-	// field, as we will start reading from this position.
+type reverseReader struct {
+	meta *unix.PerfEventMmapPage
+	// head is the position where the kernel last wrote data. updated as we
+	// read data out of the ring.
 	head uint64
-	// read is the last position where we read.
-	// When we want to read the whole buffer, we will start from head (i.e. read
-	// equals head), then we will continue to read from left to right (i.e.
-	// increasing the offset).
-	read uint64
-	// previousHead is the previous head position.
-	// We need this information to avoid reading information we already read
-	// between two full reads.
-	//
-	previousHead uint64
-	mask         uint64
-	ring         []byte
+	// tail is the end of the ring buffer. no reads must be made past it.
+	tail uint64
+	mask uint64
+	ring []byte
 }
 
 func newRingReader(meta *unix.PerfEventMmapPage, ring []byte, overwritable bool) ringReader {
-	if overwritable{
+	if overwritable {
 		return &reverseReader{
 			meta: meta,
 			head: atomic.LoadUint64(&meta.Data_head),
 			// For overwritable buffer, we use read as previous read position.
 			// Since, we will start to read from head, we initialize read to head.
-			read: atomic.LoadUint64(&meta.Data_head),
+			tail: atomic.LoadUint64(&meta.Data_head),
 			mask: uint64(cap(ring) - 1),
 			ring: ring,
 		}
@@ -212,9 +204,14 @@ func (fr *forwardReader) Read(p []byte) (int, error) {
 }
 
 func (rr *reverseReader) loadHead() {
-	rr.previousHead = rr.head
 	rr.head = atomic.LoadUint64(&rr.meta.Data_head)
-	rr.read = atomic.LoadUint64(&rr.meta.Data_head)
+	rr.tail = 0
+
+	if rr.head <= 0-uint64(cap(rr.ring)) {
+		// ring has been fully written, only permit at most cap(rr.ring)
+		// bytes to be read.
+		rr.tail = rr.head + uint64(cap(rr.ring))
+	}
 }
 
 func (rr *reverseReader) size() int {
@@ -227,76 +224,25 @@ func (rr *reverseReader) writeTail() {
 }
 
 func (rr *reverseReader) Read(p []byte) (int, error) {
-	read := rr.read
+	start := int(rr.head & rr.mask)
 
-	// This prevents reading data we already processed:
-	//
-	//    head        previous_head--+     read
-	//     |                         |      |
-	//     V                         V      V
-	// +---+------+----------+-------+------+
-	// |   |D....D|C........C|B.....B|A....A|
-	// +---+------+----------+-------+------+
-	// <--Write from right to left
-	//             Read from left to right-->
-	if rr.previousHead != 0 && read >= rr.previousHead {
-		rr.previousHead = rr.head
-
-		return 0, io.EOF
+	n := len(p)
+	// Truncate if the read wraps in the ring buffer
+	if remainder := cap(rr.ring) - start; n > remainder {
+		n = remainder
 	}
 
-	// If adding the size to the current consumer position makes us wrap the
-	// buffer, it means we already did "one loop" around the buffer.
-	// So, the pointed data would not be usable:
-	//
-	//                                  head
-	//                       read----+   |
-	//                               |   |
-	//                               V   V
-	// +---+------+----------+-------+---+--+
-	// |..E|D....D|C........C|B.....B|A..|E.|
-	// +---+------+----------+-------+---+--+
-	if read-rr.head+uint64(len(p)) > rr.mask {
-		rr.previousHead = rr.head
-
-		return 0, io.EOF
+	// Truncate if there isn't enough data
+	if remainder := int(rr.tail - rr.head); n > remainder {
+		n = remainder
 	}
 
-	size := uint32(len(p))
-	previousReadMasked := read & rr.mask
-	read += uint64(size)
+	copy(p, rr.ring[start:start+n])
+	rr.head += uint64(n)
 
-	// If adding the event size to the current
-	// consumer position makes us going from end of the buffer toward the
-	// start, we need to copy the rr.ring in two times:
-	// 1. First from previous_read until end of the buffer.
-	// 2. Second from start of the buffer until read.
-	//
-	//    read                   previous_read
-	//     |                             |
-	//     V                             V
-	// +---+------+----------+-------+---+--+
-	// |..E|D....D|C........C|B.....B|A..|E.|
-	// +---+------+----------+-------+---+--+
-	// This code snippet was highly inspired by gobpf:
-	// https://github.com/iovisor/gobpf/blob/16120a1bf4d4abc1f9cf37fecfb86009a1631b9f/elf/perf.go#L148
-	if (read & rr.mask) < previousReadMasked {
-		// Compute the number of bytes from the beginning of this sample until
-		// the end of the buffer.
-		length := uint32(rr.mask + 1 - previousReadMasked)
-
-		// From previousRead until end of the buffer.
-		copy(p[0:length-1], rr.ring[previousReadMasked:previousReadMasked+uint64(length)])
-		// From beginning of the buffer until read.
-		copy(p[length:], rr.ring[0:size-length])
-	} else {
-		// We are in the "middle" of the buffer, so no worries!
-		copy(p, rr.ring[previousReadMasked:previousReadMasked+uint64(size)])
+	if rr.head == rr.tail {
+		return n, io.EOF
 	}
 
-	// We use this field to store the previous read position.
-	// So, we know where to start in next call to this function.
-	rr.read = read
-
-	return int(size), nil
+	return n, nil
 }
