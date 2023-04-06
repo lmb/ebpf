@@ -257,7 +257,7 @@ func loadRawSpec(btf io.ReaderAt, bo binary.ByteOrder, base *Spec) (*Spec, error
 		return nil, err
 	}
 
-	types, err := inflateRawTypes(rawTypes, rawStrings, base)
+	types, err := inflateRawTypes(rawTypes, rawStrings, firstTypeID, base.TypeByID)
 	if err != nil {
 		return nil, err
 	}

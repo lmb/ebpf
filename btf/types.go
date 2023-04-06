@@ -734,31 +734,27 @@ func (c *copier) copy(typ *Type, transform Transformer) {
 
 type typeDeque = internal.Deque[*Type]
 
+// lookupFn retrieves a type by its ID.
+//
+// Multiple calls with identical arguments must produce the same result.
+//
+// Returns an error wrapping ErrNotExist if the type doesn't exist.
+type lookupFn func(TypeID) (Type, error)
+
 // inflateRawTypes takes a list of raw btf types linked via type IDs, and turns
 // it into a graph of Types connected via pointers.
 //
-// If base is provided, then the raw types are considered to be of a split BTF
-// (e.g., a kernel module).
+// baseTypeByID must be provided if firstTypeID is larger than 0.
 //
 // Returns a slice of types indexed by TypeID. Since BTF ignores compilation
 // units, multiple types may share the same name. A Type may form a cyclic graph
 // by pointing at itself.
-func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, base *Spec) ([]Type, error) {
+func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, firstTypeID TypeID, baseTypeByID lookupFn) ([]Type, error) {
 	types := make([]Type, 0, len(rawTypes)+1) // +1 for Void added to base types
 
-	// Void is defined to always be type ID 0, and is thus omitted from BTF.
-	types = append(types, (*Void)(nil))
-
-	firstTypeID := TypeID(0)
-	if base != nil {
-		var err error
-		firstTypeID, err = base.nextTypeID()
-		if err != nil {
-			return nil, err
-		}
-
-		// Split BTF doesn't contain Void.
-		types = types[:0]
+	if firstTypeID == 0 {
+		// Void is defined to always be type ID 0, and is thus omitted from BTF.
+		types = append(types, (*Void)(nil))
 	}
 
 	type fixupDef struct {
@@ -769,7 +765,7 @@ func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, base *Spec) ([
 	var fixups []fixupDef
 	fixup := func(id TypeID, typ *Type) bool {
 		if id < firstTypeID {
-			if baseType, err := base.TypeByID(id); err == nil {
+			if baseType, err := baseTypeByID(id); err == nil {
 				*typ = baseType
 				return true
 			}
