@@ -937,7 +937,7 @@ func findTargetInModule(base *btf.Spec, typeName string, target btf.Type) (*btf.
 			continue
 		}
 
-		spec, err := it.Handle.Spec(base)
+		spec, err := it.Handle.Spec()
 		if err != nil {
 			return nil, 0, fmt.Errorf("parse types for module %s: %w", info.Name, err)
 		}

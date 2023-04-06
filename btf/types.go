@@ -732,6 +732,26 @@ func (c *copier) copy(typ *Type, transform Transformer) {
 	}
 }
 
+// partialCopier allows copying only the minimal set of types from a spec.
+type partialCopier struct {
+	spec   *Spec
+	copies copier
+}
+
+func newPartialCopier(spec *Spec) *partialCopier {
+	return &partialCopier{spec, copier{copies: make(map[Type]Type)}}
+}
+
+// TypeByID is a lookupFn.
+func (pc *partialCopier) TypeByID(id TypeID) (Type, error) {
+	typ, err := pc.spec.TypeByID(id)
+	if err != nil {
+		return nil, err
+	}
+	pc.copies.copy(&typ, nil)
+	return typ, nil
+}
+
 type typeDeque = internal.Deque[*Type]
 
 // lookupFn retrieves a type by its ID.

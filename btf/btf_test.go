@@ -42,7 +42,7 @@ var vmlinuxTestdata = internal.Memoize(func() (specAndRawBTF, error) {
 		return specAndRawBTF{}, err
 	}
 
-	spec, err := loadRawSpec(bytes.NewReader(b), binary.LittleEndian, nil)
+	spec, err := loadRawSpec(bytes.NewReader(b), binary.LittleEndian, nil, false)
 	if err != nil {
 		return specAndRawBTF{}, err
 	}
@@ -260,7 +260,7 @@ func BenchmarkParseVmlinux(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		if _, err := loadRawSpec(rd, binary.LittleEndian, nil); err != nil {
+		if _, err := loadRawSpec(rd, binary.LittleEndian, nil, false); err != nil {
 			b.Fatal("Can't load BTF:", err)
 		}
 	}

@@ -110,10 +110,7 @@ func NewHandleFromID(id ID) (*Handle, error) {
 }
 
 // Spec parses the kernel BTF into Go types.
-//
-// base must contain type information for vmlinux if the handle is for
-// a kernel module. It may be nil otherwise.
-func (h *Handle) Spec(base *Spec) (*Spec, error) {
+func (h *Handle) Spec() (*Spec, error) {
 	var btfInfo sys.BtfInfo
 	btfBuffer := make([]byte, h.size)
 	btfInfo.Btf, btfInfo.BtfSize = sys.NewSlicePointerLen(btfBuffer)
@@ -122,11 +119,21 @@ func (h *Handle) Spec(base *Spec) (*Spec, error) {
 		return nil, err
 	}
 
-	if h.needsKernelBase && base == nil {
-		return nil, fmt.Errorf("missing base types")
+	if !h.needsKernelBase {
+		return loadRawSpec(bytes.NewReader(btfBuffer), internal.NativeEndian, nil, false)
 	}
 
-	return loadRawSpec(bytes.NewReader(btfBuffer), internal.NativeEndian, base)
+	base, fallback, err := kernelSpec()
+	if err != nil {
+		return nil, fmt.Errorf("load BTF base: %w", err)
+	}
+	base = base.Copy()
+
+	if fallback {
+		return nil, fmt.Errorf("can't load split BTF without access to /sys")
+	}
+
+	return loadRawSpec(bytes.NewReader(btfBuffer), internal.NativeEndian, base, true)
 }
 
 // Close destroys the handle.

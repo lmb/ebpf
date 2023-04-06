@@ -49,7 +49,7 @@ func AttachFreplace(targetProg *ebpf.Program, name string, prog *ebpf.Program) (
 		}
 		defer btfHandle.Close()
 
-		spec, err := btfHandle.Spec(nil)
+		spec, err := btfHandle.Spec()
 		if err != nil {
 			return nil, err
 		}
