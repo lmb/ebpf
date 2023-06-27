@@ -174,11 +174,15 @@ func (b *Builder) Marshal(buf []byte, opts *MarshalOptions) ([]byte, error) {
 		return nil, err
 	}
 
+	return e.finalize()
+}
+
+func (e *encoder) finalize() ([]byte, error) {
 	length := e.buf.Len()
 	typeLen := uint32(length - btfHeaderLen)
 
 	stringLen := e.strings.Length()
-	buf = e.strings.AppendEncoded(e.buf.Bytes())
+	buf := e.strings.AppendEncoded(e.buf.Bytes())
 
 	// Fill out the header, and write it out.
 	header := &btfHeader{

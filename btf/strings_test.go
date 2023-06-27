@@ -96,15 +96,3 @@ func TestStringTableBuilder(t *testing.T) {
 	_, err = readStringTable(bytes.NewReader(table), nil)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("Can't parse string table"))
 }
-
-func newStringTable(strings ...string) *stringTable {
-	offsets := make([]uint32, len(strings))
-
-	var offset uint32
-	for i, str := range strings {
-		offsets[i] = offset
-		offset += uint32(len(str)) + 1 // account for NUL
-	}
-
-	return &stringTable{nil, offsets, strings}
-}

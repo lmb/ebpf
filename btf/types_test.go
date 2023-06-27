@@ -1,9 +1,12 @@
 package btf
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/cilium/ebpf/internal"
 
 	qt "github.com/frankban/quicktest"
 	"github.com/google/go-cmp/cmp"
@@ -404,8 +407,6 @@ func TestInflateLegacyBitfield(t *testing.T) {
 	afterInt := beforeInt
 	afterInt.data = []btfMember{{Type: 1}}
 
-	emptyStrings := newStringTable("")
-
 	for _, test := range []struct {
 		name string
 		raw  []rawType
@@ -414,13 +415,33 @@ func TestInflateLegacyBitfield(t *testing.T) {
 		{"struct after int", []rawType{rawInt, afterInt}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			types, err := inflateRawTypes(test.raw, emptyStrings, nil)
+			e := encoder{
+				MarshalOptions: MarshalOptions{Order: internal.NativeEndian},
+				buf:            bytes.NewBuffer(make([]byte, btfHeaderLen)),
+				strings:        newStringTableBuilder(0),
+				lastID:         0,
+				ids:            make(map[Type]TypeID),
+			}
+
+			for _, raw := range test.raw {
+				if err := raw.Marshal(e.buf, e.Order); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			btf, err := e.finalize()
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			for _, typ := range types {
-				s, ok := typ.(*Struct)
+			spec, err := loadRawSpec(bytes.NewReader(btf), internal.NativeEndian, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			iter := spec.Iterate()
+			for iter.Next() {
+				s, ok := iter.Type.(*Struct)
 				if !ok {
 					continue
 				}
@@ -437,7 +458,7 @@ func TestInflateLegacyBitfield(t *testing.T) {
 				return
 			}
 
-			t.Fatal("No Struct returned from inflateRawTypes")
+			t.Fatal("No Struct found")
 		})
 	}
 }
