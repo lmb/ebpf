@@ -8,8 +8,8 @@ import (
 	"io"
 	"math"
 	"os"
-	"unsafe"
 
+	"github.com/cilium/ebpf/internal/auxv"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -20,21 +20,12 @@ var (
 // vdsoVersion returns the LINUX_VERSION_CODE embedded in the vDSO library
 // linked into the current process image.
 func vdsoVersion() (uint32, error) {
-	const uintptrIs32bits = unsafe.Sizeof((uintptr)(0)) == 4
-
-	// Read data from the auxiliary vector, which is normally passed directly
-	// to the process. Go does not expose that data, so we must read it from procfs.
-	// https://man7.org/linux/man-pages/man3/getauxval.3.html
-	av, err := os.Open("/proc/self/auxv")
-	if errors.Is(err, unix.EACCES) {
-		return 0, fmt.Errorf("opening auxv: %w (process may not be dumpable due to file capabilities)", err)
-	}
+	auxv, err := auxv.Get()
 	if err != nil {
-		return 0, fmt.Errorf("opening auxv: %w", err)
+		return 0, err
 	}
-	defer av.Close()
 
-	vdsoAddr, err := vdsoMemoryAddress(av, NativeEndian, uintptrIs32bits)
+	vdsoAddr, err := vdsoMemoryAddress(auxv)
 	if err != nil {
 		return 0, fmt.Errorf("finding vDSO memory address: %w", err)
 	}
@@ -55,59 +46,29 @@ func vdsoVersion() (uint32, error) {
 	return c, nil
 }
 
-type auxvPair32 struct {
-	Tag, Value uint32
-}
-
-type auxvPair64 struct {
-	Tag, Value uint64
-}
-
-func readAuxvPair(r io.Reader, order binary.ByteOrder, uintptrIs32bits bool) (tag, value uint64, _ error) {
-	if uintptrIs32bits {
-		var aux auxvPair32
-		if err := binary.Read(r, order, &aux); err != nil {
-			return 0, 0, fmt.Errorf("reading auxv entry: %w", err)
-		}
-		return uint64(aux.Tag), uint64(aux.Value), nil
-	}
-
-	var aux auxvPair64
-	if err := binary.Read(r, order, &aux); err != nil {
-		return 0, 0, fmt.Errorf("reading auxv entry: %w", err)
-	}
-	return aux.Tag, aux.Value, nil
-}
-
 // vdsoMemoryAddress returns the memory address of the vDSO library
 // linked into the current process image. r is an io.Reader into an auxv blob.
-func vdsoMemoryAddress(r io.Reader, order binary.ByteOrder, uintptrIs32bits bool) (uintptr, error) {
-	// See https://elixir.bootlin.com/linux/v6.5.5/source/include/uapi/linux/auxvec.h
-	const (
-		_AT_NULL         = 0  // End of vector
-		_AT_SYSINFO_EHDR = 33 // Offset to vDSO blob in process image
-	)
-
+func vdsoMemoryAddress(auxvec []uintptr) (uintptr, error) {
 	// Loop through all tag/value pairs in auxv until we find `AT_SYSINFO_EHDR`,
 	// the address of a page containing the virtual Dynamic Shared Object (vDSO).
-	for {
-		tag, value, err := readAuxvPair(r, order, uintptrIs32bits)
-		if err != nil {
-			return 0, err
-		}
+	for len(auxvec) >= 2 {
+		tag, value := auxvec[0], auxvec[1]
+		auxvec = auxvec[2:]
 
 		switch tag {
-		case _AT_SYSINFO_EHDR:
+		case auxv.AT_SYSINFO_EHDR:
 			if value != 0 {
-				return uintptr(value), nil
+				return value, nil
 			}
 			return 0, fmt.Errorf("invalid vDSO address in auxv")
 		// _AT_NULL is always the last tag/val pair in the aux vector
 		// and can be treated like EOF.
-		case _AT_NULL:
-			return 0, errAuxvNoVDSO
+		case auxv.AT_NULL:
+			break
 		}
 	}
+
+	return 0, errAuxvNoVDSO
 }
 
 // format described at https://www.man7.org/linux/man-pages/man5/elf.5.html in section 'Notes (Nhdr)'

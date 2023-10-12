@@ -2,30 +2,27 @@ package internal
 
 import (
 	"encoding/binary"
-	"errors"
 	"os"
 	"testing"
 
+	"github.com/cilium/ebpf/internal/auxv"
 	qt "github.com/frankban/quicktest"
 )
 
 func TestAuxvVDSOMemoryAddress(t *testing.T) {
 	for _, testcase := range []struct {
 		source  string
-		is32bit bool
+		parser  func(string, binary.ByteOrder) ([]uintptr, error)
 		address uint64
 	}{
-		{"auxv64le.bin", false, 0x7ffd377e5000},
-		{"auxv32le.bin", true, 0xb7fc3000},
+		{"auxv64le.bin", auxv.FromFile[uint64], 0x7ffd377e5000},
+		{"auxv32le.bin", auxv.FromFile[uint32], 0xb7fc3000},
 	} {
 		t.Run(testcase.source, func(t *testing.T) {
-			av, err := os.Open("testdata/" + testcase.source)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { av.Close() })
+			auxv, err := testcase.parser("testdata/"+testcase.source, binary.LittleEndian)
+			qt.Assert(t, err, qt.IsNil)
 
-			addr, err := vdsoMemoryAddress(av, binary.LittleEndian, testcase.is32bit)
+			addr, err := vdsoMemoryAddress(auxv)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -38,17 +35,8 @@ func TestAuxvVDSOMemoryAddress(t *testing.T) {
 }
 
 func TestAuxvNoVDSO(t *testing.T) {
-	// Copy of auxv.bin with the vDSO pointer removed.
-	av, err := os.Open("testdata/auxv64le_no_vdso.bin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { av.Close() })
-
-	_, err = vdsoMemoryAddress(av, binary.LittleEndian, false)
-	if want, got := errAuxvNoVDSO, err; !errors.Is(got, want) {
-		t.Fatalf("expected error '%v', got: %v", want, got)
-	}
+	_, err := vdsoMemoryAddress([]uintptr{auxv.AT_NULL, 0})
+	qt.Assert(t, err, qt.ErrorIs, errAuxvNoVDSO)
 }
 
 func TestVDSOVersion(t *testing.T) {
