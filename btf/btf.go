@@ -2,6 +2,7 @@ package btf
 
 import (
 	"bufio"
+	"bytes"
 	"debug/elf"
 	"encoding/binary"
 	"errors"
@@ -32,25 +33,16 @@ type ID = sys.BTFID
 // Spec allows querying a set of Types and loading the set into the
 // kernel.
 type Spec struct {
-	// All types contained by the spec, not including types from the base in
-	// case the spec was parsed from split BTF.
-	types []Type
+	decoder *decoder
+
+	strings *stringTable
 
 	// Type IDs indexed by type.
 	typeIDs map[Type]TypeID
 
-	// The ID of the first type in types.
-	firstTypeID TypeID
-
 	// Types indexed by essential name.
 	// Includes all struct flavors and types with the same name.
-	namedTypes map[essentialName][]Type
-
-	// String table from ELF.
-	strings *stringTable
-
-	// Byte order of the ELF we decoded the spec from, may be nil.
-	byteOrder binary.ByteOrder
+	namedTypes map[essentialName][]TypeID
 }
 
 // LoadSpec opens file and calls LoadSpecFromReader on it.
@@ -181,78 +173,31 @@ func loadSpecFromELF(file *internal.SafeELFFile) (*Spec, error) {
 		return nil, err
 	}
 
-	err = fixupDatasec(spec.types, sectionSizes, offsets)
+	d, namedTypes, err := newDecoder(bytes.NewReader(raw), file.ByteOrder, nil, sectionSizes, offsets)
 	if err != nil {
 		return nil, err
 	}
-
-	return spec, nil
-}
-
-func loadRawSpec(btf io.ReaderAt, bo binary.ByteOrder, base *Spec) (*Spec, error) {
-	var (
-		baseStrings *stringTable
-		firstTypeID TypeID
-		err         error
-	)
-
-	if base != nil {
-		if base.firstTypeID != 0 {
-			return nil, fmt.Errorf("can't use split BTF as base")
-		}
-
-		baseStrings = base.strings
-
-		firstTypeID, err = base.nextTypeID()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	rawTypes, rawStrings, err := parseBTF(btf, bo, baseStrings)
-	if err != nil {
-		return nil, err
-	}
-
-	types, err := inflateRawTypes(rawTypes, rawStrings, base)
-	if err != nil {
-		return nil, err
-	}
-
-	typeIDs, typesByName := indexTypes(types, firstTypeID)
 
 	return &Spec{
-		namedTypes:  typesByName,
-		typeIDs:     typeIDs,
-		types:       types,
-		firstTypeID: firstTypeID,
-		strings:     rawStrings,
-		byteOrder:   bo,
+		decoder:    d,
+		strings:    d.rawStrings, // TODO: Remove this
+		namedTypes: namedTypes,
+		typeIDs:    make(map[Type]TypeID),
 	}, nil
 }
 
-func indexTypes(types []Type, firstTypeID TypeID) (map[Type]TypeID, map[essentialName][]Type) {
-	namedTypes := 0
-	for _, typ := range types {
-		if typ.TypeName() != "" {
-			// Do a pre-pass to figure out how big types by name has to be.
-			// Most types have unique names, so it's OK to ignore essentialName
-			// here.
-			namedTypes++
-		}
+func loadRawSpec(btf io.ReaderAt, bo binary.ByteOrder, base *Spec) (*Spec, error) {
+	d, namedTypes, err := newDecoder(btf, bo, base, nil, nil)
+	if err != nil {
+		return nil, err
 	}
 
-	typeIDs := make(map[Type]TypeID, len(types))
-	typesByName := make(map[essentialName][]Type, namedTypes)
-
-	for i, typ := range types {
-		if name := newEssentialName(typ.TypeName()); name != "" {
-			typesByName[name] = append(typesByName[name], typ)
-		}
-		typeIDs[typ] = firstTypeID + TypeID(i)
-	}
-
-	return typeIDs, typesByName
+	return &Spec{
+		decoder:    d,
+		strings:    d.rawStrings, // TODO: Remove this
+		namedTypes: namedTypes,
+		typeIDs:    make(map[Type]TypeID),
+	}, nil
 }
 
 // LoadKernelSpec returns the current kernel's BTF information.
@@ -371,30 +316,6 @@ func guessRawBTFByteOrder(r io.ReaderAt) binary.ByteOrder {
 	return nil
 }
 
-// parseBTF reads a .BTF section into memory and parses it into a list of
-// raw types and a string table.
-func parseBTF(btf io.ReaderAt, bo binary.ByteOrder, baseStrings *stringTable) ([]rawType, *stringTable, error) {
-	buf := internal.NewBufferedSectionReader(btf, 0, math.MaxInt64)
-	header, err := parseBTFHeader(buf, bo)
-	if err != nil {
-		return nil, nil, fmt.Errorf("parsing .BTF header: %v", err)
-	}
-
-	rawStrings, err := readStringTable(io.NewSectionReader(btf, header.stringStart(), int64(header.StringLen)),
-		baseStrings)
-	if err != nil {
-		return nil, nil, fmt.Errorf("can't read type names: %w", err)
-	}
-
-	buf.Reset(io.NewSectionReader(btf, header.typeStart(), int64(header.TypeLen)))
-	rawTypes, err := readTypes(buf, bo, header.TypeLen)
-	if err != nil {
-		return nil, nil, fmt.Errorf("can't read types: %w", err)
-	}
-
-	return rawTypes, rawStrings, nil
-}
-
 type symbol struct {
 	section string
 	name    string
@@ -402,13 +323,8 @@ type symbol struct {
 
 // fixupDatasec attempts to patch up missing info in Datasecs and its members by
 // supplementing them with information from the ELF headers and symbol table.
-func fixupDatasec(types []Type, sectionSizes map[string]uint32, offsets map[symbol]uint32) error {
-	for _, typ := range types {
-		ds, ok := typ.(*Datasec)
-		if !ok {
-			continue
-		}
-
+func fixupDatasec(datasecs []*Datasec, sectionSizes map[string]uint32, offsets map[symbol]uint32) error {
+	for _, ds := range datasecs {
 		name := ds.Name
 
 		// Some Datasecs are virtual and don't have corresponding ELF sections.
@@ -444,6 +360,7 @@ func fixupDatasec(types []Type, sectionSizes map[string]uint32, offsets map[symb
 			continue
 		}
 
+		var ok bool
 		ds.Size, ok = sectionSizes[name]
 		if !ok {
 			return fmt.Errorf("data section %s: missing size", name)
@@ -497,18 +414,10 @@ func fixupDatasecLayout(ds *Datasec) error {
 
 // Copy creates a copy of Spec.
 func (s *Spec) Copy() *Spec {
-	types := copyTypes(s.types, nil)
-	typeIDs, typesByName := indexTypes(types, s.firstTypeID)
-
-	// NB: Other parts of spec are not copied since they are immutable.
-	return &Spec{
-		types,
-		typeIDs,
-		s.firstTypeID,
-		typesByName,
-		s.strings,
-		s.byteOrder,
-	}
+	cpy := *s
+	cpy.decoder = cpy.decoder.copy()
+	cpy.typeIDs = make(map[Type]TypeID)
+	return &cpy
 }
 
 type sliceWriter []byte
@@ -521,31 +430,19 @@ func (sw sliceWriter) Write(p []byte) (int, error) {
 	return copy(sw, p), nil
 }
 
-// nextTypeID returns the next unallocated type ID or an error if there are no
-// more type IDs.
-func (s *Spec) nextTypeID() (TypeID, error) {
-	id := s.firstTypeID + TypeID(len(s.types))
-	if id < s.firstTypeID {
-		return 0, fmt.Errorf("no more type IDs")
-	}
-	return id, nil
-}
-
 // TypeByID returns the BTF Type with the given type ID.
 //
 // Returns an error wrapping ErrNotFound if a Type with the given ID
 // does not exist in the Spec.
 func (s *Spec) TypeByID(id TypeID) (Type, error) {
-	if id < s.firstTypeID {
-		return nil, fmt.Errorf("look up type with ID %d (first ID is %d): %w", id, s.firstTypeID, ErrNotFound)
+	typ, err := s.decoder.decode(id)
+	if err != nil {
+		return nil, err
 	}
 
-	index := int(id - s.firstTypeID)
-	if index >= len(s.types) {
-		return nil, fmt.Errorf("look up type with ID %d: %w", id, ErrNotFound)
-	}
-
-	return s.types[index], nil
+	// TODO: This doesn't take transitive types into account.
+	s.typeIDs[typ] = id
+	return typ, nil
 }
 
 // TypeID returns the ID for a given Type.
@@ -580,7 +477,12 @@ func (s *Spec) AnyTypesByName(name string) ([]Type, error) {
 
 	// Return a copy to prevent changes to namedTypes.
 	result := make([]Type, 0, len(types))
-	for _, t := range types {
+	for _, id := range types {
+		t, err := s.TypeByID(id)
+		if err != nil {
+			return nil, err
+		}
+
 		// Match against the full name, not just the essential one
 		// in case the type being looked up is a struct flavor.
 		if t.TypeName() == name {
@@ -676,26 +578,32 @@ func LoadSplitSpecFromReader(r io.ReaderAt, base *Spec) (*Spec, error) {
 
 // TypesIterator iterates over types of a given spec.
 type TypesIterator struct {
-	types []Type
-	index int
+	s       *Spec
+	current TypeID
+	err     error
 	// The last visited type in the spec.
 	Type Type
 }
 
 // Iterate returns the types iterator.
 func (s *Spec) Iterate() *TypesIterator {
-	// We share the backing array of types with the Spec. This is safe since
-	// we don't allow deletion or shuffling of types.
-	return &TypesIterator{types: s.types, index: 0}
+	return &TypesIterator{s: s, current: s.decoder.firstTypeID}
 }
 
 // Next returns true as long as there are any remaining types.
 func (iter *TypesIterator) Next() bool {
-	if len(iter.types) <= iter.index {
+	if iter.err != nil {
 		return false
 	}
 
-	iter.Type = iter.types[iter.index]
-	iter.index++
-	return true
+	iter.Type, iter.err = iter.s.TypeByID(iter.current)
+	return iter.err == nil
+}
+
+// TODO: Fix up users.
+func (iter *TypesIterator) Err() error {
+	if errors.Is(iter.err, ErrNotFound) {
+		return nil
+	}
+	return iter.err
 }

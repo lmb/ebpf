@@ -1,6 +1,7 @@
 package btf
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -129,7 +130,7 @@ func parseBTFHeader(r io.Reader, bo binary.ByteOrder) (*btfHeader, error) {
 	return &header, nil
 }
 
-var btfTypeLen = binary.Size(btfType{})
+const btfTypeLen = int(unsafe.Sizeof(btfType{}))
 
 // btfType is equivalent to struct btf_type in Documentation/bpf/btf.rst.
 type btfType struct {
@@ -263,6 +264,57 @@ func (bt *btfType) Marshal(w io.Writer, bo binary.ByteOrder) error {
 	return err
 }
 
+func (bt *btfType) Unmarshal(r *bufio.Reader, bo binary.ByteOrder) error {
+	buf, err := r.Peek(btfTypeLen)
+	if err != nil {
+		return err
+	}
+	bt.NameOff = bo.Uint32(buf[0:])
+	bt.Info = bo.Uint32(buf[4:])
+	bt.SizeType = bo.Uint32(buf[8:])
+	_, err = r.Discard(len(buf))
+	return err
+}
+
+// DataLen returns the length of additional type specific data in bytes.
+func (bt *btfType) DataLen() (int, error) {
+	switch bt.Kind() {
+	case kindInt:
+		return int(unsafe.Sizeof(btfInt{})), nil
+	case kindPointer:
+	case kindArray:
+		return int(unsafe.Sizeof(btfArray{})), nil
+	case kindStruct:
+		fallthrough
+	case kindUnion:
+		return int(unsafe.Sizeof(btfMember{})) * bt.Vlen(), nil
+	case kindEnum:
+		return int(unsafe.Sizeof(btfEnum{})) * bt.Vlen(), nil
+	case kindForward:
+	case kindTypedef:
+	case kindVolatile:
+	case kindConst:
+	case kindRestrict:
+	case kindFunc:
+	case kindFuncProto:
+		return int(unsafe.Sizeof(btfParam{})) * bt.Vlen(), nil
+	case kindVar:
+		return int(unsafe.Sizeof(btfVariable{})), nil
+	case kindDatasec:
+		return int(unsafe.Sizeof(btfVarSecinfo{})) * bt.Vlen(), nil
+	case kindFloat:
+	case kindDeclTag:
+		return int(unsafe.Sizeof(btfDeclTag{})), nil
+	case kindTypeTag:
+	case kindEnum64:
+		return int(unsafe.Sizeof(btfEnum64{})) * bt.Vlen(), nil
+	default:
+		return 0, fmt.Errorf("unknown kind: %v", bt.Kind())
+	}
+
+	return 0, nil
+}
+
 type rawType struct {
 	btfType
 	data interface{}
@@ -366,66 +418,54 @@ type btfDeclTag struct {
 	ComponentIdx uint32
 }
 
-func readTypes(r io.Reader, bo binary.ByteOrder, typeLen uint32) ([]rawType, error) {
-	var header btfType
-	// because of the interleaving between types and struct members it is difficult to
-	// precompute the numbers of raw types this will parse
-	// this "guess" is a good first estimation
-	sizeOfbtfType := uintptr(btfTypeLen)
-	tyMaxCount := uintptr(typeLen) / sizeOfbtfType / 2
-	types := make([]rawType, 0, tyMaxCount)
-
-	for id := TypeID(1); ; id++ {
-		if err := binary.Read(r, bo, &header); err == io.EOF {
-			return types, nil
-		} else if err != nil {
-			return nil, fmt.Errorf("can't read type info for id %v: %v", id, err)
-		}
-
-		var data interface{}
-		switch header.Kind() {
-		case kindInt:
-			data = new(btfInt)
-		case kindPointer:
-		case kindArray:
-			data = new(btfArray)
-		case kindStruct:
-			fallthrough
-		case kindUnion:
-			data = make([]btfMember, header.Vlen())
-		case kindEnum:
-			data = make([]btfEnum, header.Vlen())
-		case kindForward:
-		case kindTypedef:
-		case kindVolatile:
-		case kindConst:
-		case kindRestrict:
-		case kindFunc:
-		case kindFuncProto:
-			data = make([]btfParam, header.Vlen())
-		case kindVar:
-			data = new(btfVariable)
-		case kindDatasec:
-			data = make([]btfVarSecinfo, header.Vlen())
-		case kindFloat:
-		case kindDeclTag:
-			data = new(btfDeclTag)
-		case kindTypeTag:
-		case kindEnum64:
-			data = make([]btfEnum64, header.Vlen())
-		default:
-			return nil, fmt.Errorf("type id %v: unknown kind: %v", id, header.Kind())
-		}
-
-		if data == nil {
-			types = append(types, rawType{header, nil})
-			continue
-		}
-
-		if err := binary.Read(r, bo, data); err != nil {
-			return nil, fmt.Errorf("type id %d: kind %v: can't read %T: %v", id, header.Kind(), data, err)
-		}
-
-		types = append(types, rawType{header, data})
+func (rt *rawType) Unmarshal(r io.Reader, bo binary.ByteOrder) error {
+	if err := binary.Read(r, bo, &rt.btfType); err != nil {
+		return fmt.Errorf("read type info: %w", err)
 	}
+
+	var data interface{}
+	switch rt.Kind() {
+	case kindInt:
+		data = new(btfInt)
+	case kindPointer:
+	case kindArray:
+		data = new(btfArray)
+	case kindStruct:
+		fallthrough
+	case kindUnion:
+		data = make([]btfMember, rt.Vlen())
+	case kindEnum:
+		data = make([]btfEnum, rt.Vlen())
+	case kindForward:
+	case kindTypedef:
+	case kindVolatile:
+	case kindConst:
+	case kindRestrict:
+	case kindFunc:
+	case kindFuncProto:
+		data = make([]btfParam, rt.Vlen())
+	case kindVar:
+		data = new(btfVariable)
+	case kindDatasec:
+		data = make([]btfVarSecinfo, rt.Vlen())
+	case kindFloat:
+	case kindDeclTag:
+		data = new(btfDeclTag)
+	case kindTypeTag:
+	case kindEnum64:
+		data = make([]btfEnum64, rt.Vlen())
+	default:
+		return fmt.Errorf("unknown kind: %v", rt.Kind())
+	}
+
+	rt.data = data
+	if data == nil {
+		return nil
+	}
+
+	if err := binary.Read(r, bo, data); err != nil {
+		return fmt.Errorf("kind %v: can't read %T: %v", rt.Kind(), data, err)
+	}
+
+	return nil
 }

@@ -1,6 +1,7 @@
 package btf
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -729,38 +730,11 @@ func (c *copier) copy(typ *Type, transform Transformer) {
 
 type typeDeque = internal.Deque[*Type]
 
-// inflateRawTypes takes a list of raw btf types linked via type IDs, and turns
-// it into a graph of Types connected via pointers.
-//
-// If base is provided, then the raw types are considered to be of a split BTF
-// (e.g., a kernel module).
-//
-// Returns a slice of types indexed by TypeID. Since BTF ignores compilation
-// units, multiple types may share the same name. A Type may form a cyclic graph
-// by pointing at itself.
-func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, base *Spec) ([]Type, error) {
-	d, err := newDecoder(rawTypes, rawStrings, base)
-	if err != nil {
-		return nil, err
-	}
-
-	types := make([]Type, 0, len(rawTypes)+1) // +1 for Void added to base types
-
-	for id := d.firstTypeID; ; id++ {
-		typ, err := d.decode(id)
-		if errors.Is(err, os.ErrNotExist) {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		types = append(types, typ)
-	}
-
-	return types, nil
-}
-
 type decoder struct {
+	btf io.ReaderAt
+
+	order binary.ByteOrder
+
 	// The first logical type ID in the BTF blob. Non-zero when reading split BTF.
 	firstTypeID TypeID
 
@@ -771,8 +745,12 @@ type decoder struct {
 	// of attempting to decode them.
 	base *Spec
 
-	rawTypes   []rawType
+	typeOffsets []uint32
+
 	rawStrings *stringTable
+
+	datasecSizes   map[string]uint32
+	datasecSymbols map[symbol]uint32
 
 	// A list of legacy bitfields as encountered during decoding of the BTF.
 	legacyBitfields map[TypeID][2]Bits // offset, size
@@ -784,30 +762,139 @@ type decoder struct {
 
 	// Any newly decoded declTags.
 	declTags []*declTag
+	datasecs []*Datasec
 }
 
-func newDecoder(rawTypes []rawType, rawStrings *stringTable, base *Spec) (*decoder, error) {
+// nextTypeID returns the next unallocated type ID or an error if there are no
+// more type IDs.
+func (d *decoder) nextTypeID() (TypeID, error) {
+	id := d.firstTypeID + TypeID(len(d.typeOffsets))
+	if id < d.firstTypeID {
+		return 0, fmt.Errorf("no more type IDs")
+	}
+	return id, nil
+}
+
+func newDecoder(btf io.ReaderAt, bo binary.ByteOrder, base *Spec, datasecSizes map[string]uint32, datasecSymbols map[symbol]uint32) (*decoder, map[essentialName][]TypeID, error) {
+	buf := internal.NewBufferedSectionReader(btf, 0, math.MaxInt64)
+	header, err := parseBTFHeader(buf, bo)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse .BTF header: %w", err)
+	}
+
+	maxTypes := header.TypeLen / uint32(btfTypeLen)
+
+	var (
+		baseStrings *stringTable
+		// Void is ID 0 and omitted from BTF.
+		firstTypeID = TypeID(0)
+		types       = map[sys.TypeID]Type{0: (*Void)(nil)}
+	)
+
+	if base != nil {
+		if bo != base.decoder.order {
+			return nil, nil, fmt.Errorf("base BTF has %s byte order, expected %s", base.decoder.order, bo)
+		}
+
+		if base.decoder.firstTypeID != 0 {
+			return nil, nil, fmt.Errorf("can't use split BTF as base")
+		}
+
+		var err error
+		firstTypeID, err = base.decoder.nextTypeID()
+		if err != nil {
+			return nil, nil, err
+		}
+
+		baseStrings = base.decoder.rawStrings
+		delete(types, 0)
+	}
+
+	rawStrings, err := readStringTable(io.NewSectionReader(btf, header.stringStart(), int64(header.StringLen)),
+		baseStrings)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse string table: %w", err)
+	}
+
+	btfTypes := io.NewSectionReader(btf, header.typeStart(), int64(header.TypeLen))
+	buf.Reset(btfTypes)
+
+	// Heuristic: current vmlinux has about one string per type.
+	offsets := make([]uint32, 0, rawStrings.Num())
+	// Heuristic: half of current vmlinux types have a name.
+	namedTypes := make(map[essentialName][]TypeID, rawStrings.Num()/2)
+
+	if firstTypeID == 0 {
+		// Void doesn't really have an offset in BTF. Use MaxUint32 as a sentinel
+		// which will cause an error should we ever attempt to decode it.
+		offsets = append(make([]uint32, 0, maxTypes), math.MaxUint32)
+	}
+
+	var raw btfType
+	var offset uint32
+	for {
+		id := firstTypeID + TypeID(len(offsets))
+
+		if err := raw.Unmarshal(buf, bo); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, nil, fmt.Errorf("read type id %d: %w", id, err)
+		}
+
+		dataLen, err := raw.DataLen()
+		if err != nil {
+			return nil, nil, fmt.Errorf("type id %d: determine data length: %w", id, err)
+		}
+
+		_, err = buf.Discard(dataLen)
+		if err != nil {
+			return nil, nil, fmt.Errorf("type id %d: skip data: %w", id, err)
+		}
+
+		name, err := rawStrings.Lookup(raw.NameOff)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read type %d: lookup name: %w", id, err)
+		}
+
+		offsets = append(offsets, uint32(offset))
+		if name != "" {
+			eName := newEssentialName(name)
+			namedTypes[eName] = append(namedTypes[eName], id)
+		}
+
+		offset += uint32(btfTypeLen + dataLen)
+	}
+
+	btfTypes.Seek(0, io.SeekStart)
+
 	d := &decoder{
+		btfTypes,
+		bo,
 		TypeID(0),
 		map[TypeID]Type{0: (*Void)(nil)},
 		base,
-		rawTypes,
+		offsets,
 		rawStrings,
+		datasecSizes,
+		datasecSymbols,
 		make(map[TypeID][2]Bits),
 		nil,
 		nil,
+		nil,
 	}
 
-	if base != nil {
-		var err error
-		d.firstTypeID, err = base.nextTypeID()
-		if err != nil {
-			return nil, err
-		}
-		delete(d.types, 0)
-	}
+	return d, namedTypes, nil
+}
 
-	return d, nil
+func (d *decoder) copy() *decoder {
+	cpy := *d
+	if cpy.firstTypeID == 0 {
+		cpy.types = map[TypeID]Type{0: (*Void)(nil)}
+	} else {
+		cpy.types = make(map[TypeID]Type)
+	}
+	cpy.legacyBitfields = make(map[TypeID][2]Bits)
+	return &cpy
 }
 
 func (d *decoder) convertMembers(raw []btfMember, kindFlag bool) []Member {
@@ -873,12 +960,7 @@ func (d *decoder) decodeRecurse(id TypeID, typ *Type) {
 	}
 
 	index := int(id - d.firstTypeID)
-	if d.firstTypeID == 0 {
-		// Void is defined to always be type ID 0, and is thus omitted from BTF.
-		// Adjust the index accordingly.
-		index--
-	}
-	if index >= len(d.rawTypes) {
+	if index >= len(d.typeOffsets) {
 		panic(os.ErrNotExist)
 	}
 
@@ -894,7 +976,14 @@ func (d *decoder) decodeRecurse(id TypeID, typ *Type) {
 		d.pending = d.pending[:len(d.pending)-1]
 	}()
 
-	raw := d.rawTypes[index]
+	offset := d.typeOffsets[index]
+	r := io.NewSectionReader(d.btf, int64(offset), math.MaxInt64)
+
+	var raw rawType
+	if err := raw.Unmarshal(r, d.order); err != nil {
+		panic(err)
+	}
+
 	name, err := d.rawStrings.Lookup(raw.NameOff)
 	if err != nil {
 		panic(fmt.Errorf("get name from string table: %w", err))
@@ -1019,7 +1108,9 @@ func (d *decoder) decodeRecurse(id TypeID, typ *Type) {
 		for i := range vars {
 			d.decodeRecurse(btfVars[i].Type, &vars[i].Type)
 		}
-		*typ = &Datasec{name, raw.Size(), vars}
+		ds := &Datasec{name, raw.Size(), vars}
+		*typ = ds
+		d.datasecs = append(d.datasecs, ds)
 
 	case kindFloat:
 		*typ = &Float{name, raw.Size()}
@@ -1127,6 +1218,11 @@ func (d *decoder) decode(id TypeID) (typ Type, err error) {
 		}
 	}
 	d.declTags = nil
+
+	if err := fixupDatasec(d.datasecs, d.datasecSizes, d.datasecSymbols); err != nil {
+		panic(err)
+	}
+	d.datasecs = nil
 
 	return typ, nil
 }

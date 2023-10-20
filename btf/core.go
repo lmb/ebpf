@@ -173,8 +173,8 @@ func CORERelocate(relos []*CORERelocation, target *Spec, bo binary.ByteOrder) ([
 		}
 	}
 
-	if bo != target.byteOrder {
-		return nil, fmt.Errorf("can't relocate %s against %s", bo, target.byteOrder)
+	if bo != target.decoder.order {
+		return nil, fmt.Errorf("can't relocate %s against %s", bo, target.decoder.order)
 	}
 
 	type reloGroup struct {
@@ -245,11 +245,11 @@ var errIncompatibleTypes = errors.New("incompatible types")
 //
 // The best target is determined by scoring: the less poisoning we have to do
 // the better the target is.
-func coreCalculateFixups(relos []*CORERelocation, targetSpec *Spec, targets []Type, bo binary.ByteOrder) ([]COREFixup, error) {
+func coreCalculateFixups(relos []*CORERelocation, targetSpec *Spec, targets []TypeID, bo binary.ByteOrder) ([]COREFixup, error) {
 	bestScore := len(relos)
 	var bestFixups []COREFixup
-	for _, target := range targets {
-		targetID, err := targetSpec.TypeID(target)
+	for _, targetID := range targets {
+		target, err := targetSpec.TypeByID(targetID)
 		if err != nil {
 			return nil, fmt.Errorf("target type ID: %w", err)
 		}

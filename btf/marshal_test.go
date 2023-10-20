@@ -37,7 +37,7 @@ func TestBuilderMarshal(t *testing.T) {
 
 	have, err := loadRawSpec(bytes.NewReader(buf), internal.NativeEndian, nil)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("Couldn't parse BTF"))
-	qt.Assert(t, have.types, qt.DeepEquals, want)
+	qt.Assert(t, typesFromSpec(t, have), qt.DeepEquals, want)
 }
 
 func TestBuilderAdd(t *testing.T) {
@@ -102,12 +102,12 @@ limitTypes:
 	buf, err := b.Marshal(nil, KernelMarshalOptions())
 	qt.Assert(t, err, qt.IsNil)
 
-	rebuilt, err := loadRawSpec(bytes.NewReader(buf), binary.LittleEndian, nil)
+	_, err = loadRawSpec(bytes.NewReader(buf), binary.LittleEndian, nil)
 	qt.Assert(t, err, qt.IsNil, qt.Commentf("round tripping BTF failed"))
 
-	if n := len(rebuilt.types); n > math.MaxUint16 {
-		t.Logf("Rebuilt BTF contains %d types which exceeds uint16, test may fail on older kernels", n)
-	}
+	// if n := len(rebuilt.types); n > math.MaxUint16 {
+	// 	t.Logf("Rebuilt BTF contains %d types which exceeds uint16, test may fail on older kernels", n)
+	// }
 
 	h, err := NewHandleFromRawBTF(buf)
 	testutils.SkipIfNotSupported(t, err)
