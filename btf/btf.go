@@ -64,7 +64,12 @@ func LoadSpecFromReader(rd io.ReaderAt) (*Spec, error) {
 	file, err := internal.NewSafeELFFile(rd)
 	if err != nil {
 		if bo := guessRawBTFByteOrder(rd); bo != nil {
-			return loadRawSpec(io.NewSectionReader(rd, 0, math.MaxInt64), bo, nil)
+			raw, err := io.ReadAll(io.NewSectionReader(rd, 0, math.MaxInt64))
+			if err != nil {
+				return nil, err
+			}
+
+			return loadRawSpec(bytes.NewReader(raw), bo, nil)
 		}
 
 		return nil, err
@@ -168,7 +173,7 @@ func loadSpecFromELF(file *internal.SafeELFFile) (*Spec, error) {
 		return nil, fmt.Errorf("compressed BTF is not supported")
 	}
 
-	spec, err := loadRawSpec(btfSection.ReaderAt, file.ByteOrder, nil)
+	raw, err := io.ReadAll(btfSection.Open())
 	if err != nil {
 		return nil, err
 	}
