@@ -2,7 +2,7 @@
 // The program will be attached to the 'readline' symbol in the binary '/bin/bash' and print out
 // the line which 'readline' functions returns to the caller.
 
-//go:build amd64
+//go:build amd64 && linux
 
 package main
 

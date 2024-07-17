@@ -1,3 +1,5 @@
+//go:build linux
+
 // This program demonstrates attaching an eBPF program to a network interface
 // with XDP (eXpress Data Path). The program parses the IPv4 source address
 // from packets and writes the packet count by IP to an LRU hash map.

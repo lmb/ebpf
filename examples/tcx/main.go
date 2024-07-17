@@ -1,3 +1,5 @@
+//go:build linux
+
 // This program demonstrates attaching an eBPF program to a network interface
 // with Linux TC (Traffic Control). The program counts ingress and egress
 // packets using two ARRAY maps.
