@@ -18,5 +18,6 @@ require (
 	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	golang.org/x/net v0.23.0 // indirect
-	golang.org/x/sync v0.1.0 // indirect
+	golang.org/x/sync v0.7.0 // indirect
+	golang.org/x/text v0.16.0 // indirect
 )
