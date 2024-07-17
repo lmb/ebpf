@@ -168,7 +168,13 @@ func Generate(args GenerateArgs) error {
 		return fmt.Errorf("can't generate types: %s", err)
 	}
 
-	return internal.WriteFormatted(buf.Bytes(), args.Output)
+	formatted, err := internal.FormatGoSource(buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	_, err = args.Output.Write(formatted)
+	return err
 }
 
 // sortTypes returns a list of types sorted by their (generated) Go type name.

@@ -59,13 +59,12 @@ func run(args []string) error {
 		return err
 	}
 
-	w, err := os.Create("types.go")
+	formatted, err := internal.FormatGoSource(output)
 	if err != nil {
 		return err
 	}
-	defer w.Close()
 
-	return internal.WriteFormatted(output, w)
+	return os.WriteFile("types.go", formatted, 0666)
 }
 
 func generateTypes(spec *btf.Spec) ([]byte, error) {

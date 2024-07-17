@@ -5,7 +5,6 @@ import (
 	"errors"
 	"go/format"
 	"go/scanner"
-	"io"
 	"reflect"
 	"strings"
 	"unicode"
@@ -48,19 +47,18 @@ func Identifier(str string) string {
 	}, str)
 }
 
-// WriteFormatted outputs a formatted src into out.
+// FormatGoSource formats Go source code.
 //
 // If formatting fails it returns an informative error message.
-func WriteFormatted(src []byte, out io.Writer) error {
+func FormatGoSource(src []byte) ([]byte, error) {
 	formatted, err := format.Source(src)
 	if err == nil {
-		_, err = out.Write(formatted)
-		return err
+		return formatted, nil
 	}
 
 	var el scanner.ErrorList
 	if !errors.As(err, &el) {
-		return err
+		return nil, err
 	}
 
 	var nel scanner.ErrorList
@@ -81,7 +79,7 @@ func WriteFormatted(src []byte, out io.Writer) error {
 		nel = append(nel, err)
 	}
 
-	return nel
+	return nil, nel
 }
 
 // GoTypeName is like %T, but elides the package name.
