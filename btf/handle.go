@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/unix"
 )
@@ -49,8 +50,8 @@ func NewHandleFromRawBTF(btf []byte) (*Handle, error) {
 		return nil, errors.New("BTF exceeds the maximum size")
 	}
 
-	attr := &sys.BtfLoadAttr{
-		Btf:     sys.NewSlicePointer(btf),
+	attr := &linux.BtfLoadAttr{
+		Btf:     linux.NewSlicePointer(btf),
 		BtfSize: uint32(len(btf)),
 	}
 
@@ -60,7 +61,7 @@ func NewHandleFromRawBTF(btf []byte) (*Handle, error) {
 	)
 	for {
 		var fd *sys.FD
-		fd, err = sys.BtfLoad(attr)
+		fd, err = linux.BtfLoad(attr)
 		if err == nil {
 			return &Handle{fd, attr.BtfSize, false}, nil
 		}
@@ -93,7 +94,7 @@ func NewHandleFromRawBTF(btf []byte) (*Handle, error) {
 
 		logBuf = make([]byte, logSize)
 		attr.BtfLogSize = logSize
-		attr.BtfLogBuf = sys.NewSlicePointer(logBuf)
+		attr.BtfLogBuf = linux.NewSlicePointer(logBuf)
 		attr.BtfLogLevel = 1
 	}
 
@@ -112,7 +113,7 @@ func NewHandleFromRawBTF(btf []byte) (*Handle, error) {
 //
 // Requires CAP_SYS_ADMIN.
 func NewHandleFromID(id ID) (*Handle, error) {
-	fd, err := sys.BtfGetFdById(&sys.BtfGetFdByIdAttr{
+	fd, err := linux.BtfGetFdById(&linux.BtfGetFdByIdAttr{
 		Id: uint32(id),
 	})
 	if err != nil {
@@ -133,11 +134,11 @@ func NewHandleFromID(id ID) (*Handle, error) {
 // base must contain type information for vmlinux if the handle is for
 // a kernel module. It may be nil otherwise.
 func (h *Handle) Spec(base *Spec) (*Spec, error) {
-	var btfInfo sys.BtfInfo
+	var btfInfo linux.BtfInfo
 	btfBuffer := make([]byte, h.size)
-	btfInfo.Btf, btfInfo.BtfSize = sys.NewSlicePointerLen(btfBuffer)
+	btfInfo.Btf, btfInfo.BtfSize = linux.NewSlicePointerLen(btfBuffer)
 
-	if err := sys.ObjInfo(h.fd, &btfInfo); err != nil {
+	if err := linux.ObjInfo(h.fd, &btfInfo); err != nil {
 		return nil, err
 	}
 
@@ -191,8 +192,8 @@ func newHandleInfoFromFD(fd *sys.FD) (*HandleInfo, error) {
 	// We invoke the syscall once with a empty BTF and name buffers to get size
 	// information to allocate buffers. Then we invoke it a second time with
 	// buffers to receive the data.
-	var btfInfo sys.BtfInfo
-	if err := sys.ObjInfo(fd, &btfInfo); err != nil {
+	var btfInfo linux.BtfInfo
+	if err := linux.ObjInfo(fd, &btfInfo); err != nil {
 		return nil, fmt.Errorf("get BTF info for fd %s: %w", fd, err)
 	}
 
@@ -206,8 +207,8 @@ func newHandleInfoFromFD(fd *sys.FD) (*HandleInfo, error) {
 	btfInfo.BtfSize = 0
 
 	nameBuffer := make([]byte, btfInfo.NameLen)
-	btfInfo.Name, btfInfo.NameLen = sys.NewSlicePointerLen(nameBuffer)
-	if err := sys.ObjInfo(fd, &btfInfo); err != nil {
+	btfInfo.Name, btfInfo.NameLen = linux.NewSlicePointerLen(nameBuffer)
+	if err := linux.ObjInfo(fd, &btfInfo); err != nil {
 		return nil, err
 	}
 
@@ -246,8 +247,8 @@ type HandleIterator struct {
 func (it *HandleIterator) Next() bool {
 	id := it.ID
 	for {
-		attr := &sys.BtfGetNextIdAttr{Id: id}
-		err := sys.BtfGetNextId(attr)
+		attr := &linux.BtfGetNextIdAttr{Id: id}
+		err := linux.BtfGetNextId(attr)
 		if errors.Is(err, os.ErrNotExist) {
 			// There are no more BTF objects.
 			break

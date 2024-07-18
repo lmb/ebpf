@@ -1,4 +1,4 @@
-package sys
+package linux
 
 import (
 	"errors"
@@ -37,25 +37,4 @@ func TestWrappedErrno(t *testing.T) {
 
 	notsupp := wrappedErrno{ENOTSUPP}
 	qt.Assert(t, qt.StringContains(notsupp.Error(), "operation not supported"))
-}
-
-func TestSyscallError(t *testing.T) {
-	err := errors.New("foo")
-	foo := Error(err, unix.EINVAL)
-
-	if !errors.Is(foo, unix.EINVAL) {
-		t.Error("SyscallError is not the wrapped errno")
-	}
-
-	if !errors.Is(foo, err) {
-		t.Error("SyscallError is not the wrapped error")
-	}
-
-	if errors.Is(unix.EINVAL, foo) {
-		t.Error("Errno is the SyscallError")
-	}
-
-	if errors.Is(err, foo) {
-		t.Error("Error is the SyscallError")
-	}
 }

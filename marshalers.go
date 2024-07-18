@@ -9,7 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sysenc"
 )
 
@@ -18,14 +18,14 @@ import (
 //
 // As an optimization, it returns the original value if it is an
 // unsafe.Pointer.
-func marshalMapSyscallInput(data any, length int) (sys.Pointer, error) {
+func marshalMapSyscallInput(data any, length int) (linux.Pointer, error) {
 	if ptr, ok := data.(unsafe.Pointer); ok {
-		return sys.NewPointer(ptr), nil
+		return linux.NewPointer(ptr), nil
 	}
 
 	buf, err := sysenc.Marshal(data, length)
 	if err != nil {
-		return sys.Pointer{}, err
+		return linux.Pointer{}, err
 	}
 
 	return buf.Pointer(), nil
@@ -83,20 +83,20 @@ func appendPerCPUSlice(buf []byte, slice any, possibleCPUs, elemLength, alignedE
 // possible CPU into a buffer of bytes.
 //
 // Values are initialized to zero if the slice has less elements than CPUs.
-func marshalPerCPUValue(slice any, elemLength int) (sys.Pointer, error) {
+func marshalPerCPUValue(slice any, elemLength int) (linux.Pointer, error) {
 	possibleCPUs, err := PossibleCPU()
 	if err != nil {
-		return sys.Pointer{}, err
+		return linux.Pointer{}, err
 	}
 
 	alignedElemLength := internal.Align(elemLength, 8)
 	buf := make([]byte, 0, alignedElemLength*possibleCPUs)
 	buf, err = appendPerCPUSlice(buf, slice, possibleCPUs, elemLength, alignedElemLength)
 	if err != nil {
-		return sys.Pointer{}, err
+		return linux.Pointer{}, err
 	}
 
-	return sys.NewSlicePointer(buf), nil
+	return linux.NewSlicePointer(buf), nil
 }
 
 // marshalBatchPerCPUValue encodes a batch-sized slice of slices containing

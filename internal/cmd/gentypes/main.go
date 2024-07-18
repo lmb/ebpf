@@ -15,7 +15,7 @@ import (
 
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 )
 
 type syscallRetval int
@@ -78,13 +78,13 @@ func generateTypes(spec *btf.Spec) ([]byte, error) {
 
 	gf := &btf.GoFormatter{
 		Names: map[btf.Type]string{
-			objName:  internal.GoTypeName(sys.ObjName{}),
-			linkID:   internal.GoTypeName(sys.LinkID(0)),
-			btfID:    internal.GoTypeName(sys.BTFID(0)),
-			typeID:   internal.GoTypeName(sys.TypeID(0)),
-			pointer:  internal.GoTypeName(sys.Pointer{}),
-			logLevel: internal.GoTypeName(sys.LogLevel(0)),
-			mapFlags: internal.GoTypeName(sys.MapFlags(0)),
+			objName:  internal.GoTypeName(linux.ObjName{}),
+			linkID:   internal.GoTypeName(linux.LinkID(0)),
+			btfID:    internal.GoTypeName(linux.BTFID(0)),
+			typeID:   internal.GoTypeName(linux.TypeID(0)),
+			pointer:  internal.GoTypeName(linux.Pointer{}),
+			logLevel: internal.GoTypeName(linux.LogLevel(0)),
+			mapFlags: internal.GoTypeName(linux.MapFlags(0)),
 		},
 		Identifier: internal.Identifier,
 		EnumIdentifier: func(name, element string) string {
@@ -99,6 +99,8 @@ package sys
 
 import (
 	"unsafe"
+
+	"github.com/cilium/ebpf/internal/sys"
 )
 
 `)
@@ -574,7 +576,7 @@ import (
 		case retError:
 			fmt.Fprintf(w, "func %s(attr *%s) error { _, err := BPF(%s, unsafe.Pointer(attr), unsafe.Sizeof(*attr)); return err }\n\n", s.goType, goAttrType, s.cmd)
 		case retFd:
-			fmt.Fprintf(w, "func %s(attr *%s) (*FD, error) { fd, err := BPF(%s, unsafe.Pointer(attr), unsafe.Sizeof(*attr)); if err != nil { return nil, err }; return NewFD(int(fd)) }\n\n", s.goType, goAttrType, s.cmd)
+			fmt.Fprintf(w, "func %s(attr *%s) (*sys.FD, error) { fd, err := BPF(%s, unsafe.Pointer(attr), unsafe.Sizeof(*attr)); if err != nil { return nil, err }; return sys.NewFD(int(fd)) }\n\n", s.goType, goAttrType, s.cmd)
 		}
 	}
 

@@ -6,14 +6,15 @@ import (
 	"fmt"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 )
 
-const anchorFlags = sys.BPF_F_REPLACE |
-	sys.BPF_F_BEFORE |
-	sys.BPF_F_AFTER |
-	sys.BPF_F_ID |
-	sys.BPF_F_LINK_MPROG
+const anchorFlags = linux.BPF_F_REPLACE |
+	linux.BPF_F_BEFORE |
+	linux.BPF_F_AFTER |
+	linux.BPF_F_ID |
+	linux.BPF_F_LINK_MPROG
 
 // Anchor is a reference to a link or program.
 //
@@ -34,7 +35,7 @@ type Anchor interface {
 type firstAnchor struct{}
 
 func (firstAnchor) anchor() (fdOrID, flags uint32, _ error) {
-	return 0, sys.BPF_F_BEFORE, nil
+	return 0, linux.BPF_F_BEFORE, nil
 }
 
 // Head is the position before all other programs or links.
@@ -45,7 +46,7 @@ func Head() Anchor {
 type lastAnchor struct{}
 
 func (lastAnchor) anchor() (fdOrID, flags uint32, _ error) {
-	return 0, sys.BPF_F_AFTER, nil
+	return 0, linux.BPF_F_AFTER, nil
 }
 
 // Tail is the position after all other programs or links.
@@ -55,52 +56,52 @@ func Tail() Anchor {
 
 // Before is the position just in front of target.
 func BeforeLink(target Link) Anchor {
-	return anchor{target, sys.BPF_F_BEFORE}
+	return anchor{target, linux.BPF_F_BEFORE}
 }
 
 // After is the position just after target.
 func AfterLink(target Link) Anchor {
-	return anchor{target, sys.BPF_F_AFTER}
+	return anchor{target, linux.BPF_F_AFTER}
 }
 
 // Before is the position just in front of target.
 func BeforeLinkByID(target ID) Anchor {
-	return anchor{target, sys.BPF_F_BEFORE}
+	return anchor{target, linux.BPF_F_BEFORE}
 }
 
 // After is the position just after target.
 func AfterLinkByID(target ID) Anchor {
-	return anchor{target, sys.BPF_F_AFTER}
+	return anchor{target, linux.BPF_F_AFTER}
 }
 
 // Before is the position just in front of target.
 func BeforeProgram(target *ebpf.Program) Anchor {
-	return anchor{target, sys.BPF_F_BEFORE}
+	return anchor{target, linux.BPF_F_BEFORE}
 }
 
 // After is the position just after target.
 func AfterProgram(target *ebpf.Program) Anchor {
-	return anchor{target, sys.BPF_F_AFTER}
+	return anchor{target, linux.BPF_F_AFTER}
 }
 
 // Replace the target itself.
 func ReplaceProgram(target *ebpf.Program) Anchor {
-	return anchor{target, sys.BPF_F_REPLACE}
+	return anchor{target, linux.BPF_F_REPLACE}
 }
 
 // Before is the position just in front of target.
 func BeforeProgramByID(target ebpf.ProgramID) Anchor {
-	return anchor{target, sys.BPF_F_BEFORE}
+	return anchor{target, linux.BPF_F_BEFORE}
 }
 
 // After is the position just after target.
 func AfterProgramByID(target ebpf.ProgramID) Anchor {
-	return anchor{target, sys.BPF_F_AFTER}
+	return anchor{target, linux.BPF_F_AFTER}
 }
 
 // Replace the target itself.
 func ReplaceProgramByID(target ebpf.ProgramID) Anchor {
-	return anchor{target, sys.BPF_F_REPLACE}
+	return anchor{target, linux.BPF_F_REPLACE}
 }
 
 type anchor struct {
@@ -120,17 +121,17 @@ func (ap anchor) anchor() (fdOrID, flags uint32, _ error) {
 		typeFlag = 0
 	case ebpf.ProgramID:
 		fdOrID = uint32(target)
-		typeFlag = sys.BPF_F_ID
+		typeFlag = linux.BPF_F_ID
 	case interface{ FD() int }:
 		fd := target.FD()
 		if fd < 0 {
 			return 0, 0, sys.ErrClosedFd
 		}
 		fdOrID = uint32(fd)
-		typeFlag = sys.BPF_F_LINK_MPROG
+		typeFlag = linux.BPF_F_LINK_MPROG
 	case ID:
 		fdOrID = uint32(target)
-		typeFlag = sys.BPF_F_LINK_MPROG | sys.BPF_F_ID
+		typeFlag = linux.BPF_F_LINK_MPROG | linux.BPF_F_ID
 	default:
 		return 0, 0, fmt.Errorf("invalid target %T", ap.target)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/tracefs"
 	"github.com/cilium/ebpf/internal/unix"
@@ -21,7 +22,7 @@ var (
 	// unnecessary memory allocations
 	sysErrKeyNotExist  = sys.Error(ErrKeyNotExist, unix.ENOENT)
 	sysErrKeyExist     = sys.Error(ErrKeyExist, unix.EEXIST)
-	sysErrNotSupported = sys.Error(ErrNotSupported, sys.ENOTSUPP)
+	sysErrNotSupported = sys.Error(ErrNotSupported, linux.ENOTSUPP)
 )
 
 // invalidBPFObjNameChar returns true if char may not appear in
@@ -52,17 +53,17 @@ func progLoad(insns asm.Instructions, typ ProgramType, license string) (*sys.FD,
 	}
 	bytecode := buf.Bytes()
 
-	return sys.ProgLoad(&sys.ProgLoadAttr{
-		ProgType: sys.ProgType(typ),
-		License:  sys.NewStringPointer(license),
-		Insns:    sys.NewSlicePointer(bytecode),
+	return linux.ProgLoad(&linux.ProgLoadAttr{
+		ProgType: linux.ProgType(typ),
+		License:  linux.NewStringPointer(license),
+		Insns:    linux.NewSlicePointer(bytecode),
 		InsnCnt:  uint32(len(bytecode) / asm.InstructionSize),
 	})
 }
 
 var haveNestedMaps = internal.NewFeatureTest("nested maps", "4.12", func() error {
-	_, err := sys.MapCreate(&sys.MapCreateAttr{
-		MapType:    sys.MapType(ArrayOfMaps),
+	_, err := linux.MapCreate(&linux.MapCreateAttr{
+		MapType:    linux.MapType(ArrayOfMaps),
 		KeySize:    4,
 		ValueSize:  4,
 		MaxEntries: 1,
@@ -81,8 +82,8 @@ var haveNestedMaps = internal.NewFeatureTest("nested maps", "4.12", func() error
 var haveMapMutabilityModifiers = internal.NewFeatureTest("read- and write-only maps", "5.2", func() error {
 	// This checks BPF_F_RDONLY_PROG and BPF_F_WRONLY_PROG. Since
 	// BPF_MAP_FREEZE appeared in 5.2 as well we don't do a separate check.
-	m, err := sys.MapCreate(&sys.MapCreateAttr{
-		MapType:    sys.MapType(Array),
+	m, err := linux.MapCreate(&linux.MapCreateAttr{
+		MapType:    linux.MapType(Array),
 		KeySize:    4,
 		ValueSize:  4,
 		MaxEntries: 1,
@@ -97,8 +98,8 @@ var haveMapMutabilityModifiers = internal.NewFeatureTest("read- and write-only m
 
 var haveMmapableMaps = internal.NewFeatureTest("mmapable maps", "5.5", func() error {
 	// This checks BPF_F_MMAPABLE, which appeared in 5.5 for array maps.
-	m, err := sys.MapCreate(&sys.MapCreateAttr{
-		MapType:    sys.MapType(Array),
+	m, err := linux.MapCreate(&linux.MapCreateAttr{
+		MapType:    linux.MapType(Array),
 		KeySize:    4,
 		ValueSize:  4,
 		MaxEntries: 1,
@@ -113,8 +114,8 @@ var haveMmapableMaps = internal.NewFeatureTest("mmapable maps", "5.5", func() er
 
 var haveInnerMaps = internal.NewFeatureTest("inner maps", "5.10", func() error {
 	// This checks BPF_F_INNER_MAP, which appeared in 5.10.
-	m, err := sys.MapCreate(&sys.MapCreateAttr{
-		MapType:    sys.MapType(Array),
+	m, err := linux.MapCreate(&linux.MapCreateAttr{
+		MapType:    linux.MapType(Array),
 		KeySize:    4,
 		ValueSize:  4,
 		MaxEntries: 1,
@@ -130,8 +131,8 @@ var haveInnerMaps = internal.NewFeatureTest("inner maps", "5.10", func() error {
 
 var haveNoPreallocMaps = internal.NewFeatureTest("prealloc maps", "4.6", func() error {
 	// This checks BPF_F_NO_PREALLOC, which appeared in 4.6.
-	m, err := sys.MapCreate(&sys.MapCreateAttr{
-		MapType:    sys.MapType(Hash),
+	m, err := linux.MapCreate(&linux.MapCreateAttr{
+		MapType:    linux.MapType(Hash),
 		KeySize:    4,
 		ValueSize:  4,
 		MaxEntries: 1,
@@ -158,7 +159,7 @@ func wrapMapError(err error) error {
 		return sysErrKeyExist
 	}
 
-	if errors.Is(err, sys.ENOTSUPP) {
+	if errors.Is(err, linux.ENOTSUPP) {
 		return sysErrNotSupported
 	}
 
@@ -170,15 +171,15 @@ func wrapMapError(err error) error {
 }
 
 var haveObjName = internal.NewFeatureTest("object names", "4.15", func() error {
-	attr := sys.MapCreateAttr{
-		MapType:    sys.MapType(Array),
+	attr := linux.MapCreateAttr{
+		MapType:    linux.MapType(Array),
 		KeySize:    4,
 		ValueSize:  4,
 		MaxEntries: 1,
-		MapName:    sys.NewObjName("feature_test"),
+		MapName:    linux.NewObjName("feature_test"),
 	}
 
-	fd, err := sys.MapCreate(&attr)
+	fd, err := linux.MapCreate(&attr)
 	if err != nil {
 		return internal.ErrNotSupported
 	}
@@ -192,15 +193,15 @@ var objNameAllowsDot = internal.NewFeatureTest("dot in object names", "5.2", fun
 		return err
 	}
 
-	attr := sys.MapCreateAttr{
-		MapType:    sys.MapType(Array),
+	attr := linux.MapCreateAttr{
+		MapType:    linux.MapType(Array),
 		KeySize:    4,
 		ValueSize:  4,
 		MaxEntries: 1,
-		MapName:    sys.NewObjName(".test"),
+		MapName:    linux.NewObjName(".test"),
 	}
 
-	fd, err := sys.MapCreate(&attr)
+	fd, err := linux.MapCreate(&attr)
 	if err != nil {
 		return internal.ErrNotSupported
 	}
@@ -211,14 +212,14 @@ var objNameAllowsDot = internal.NewFeatureTest("dot in object names", "5.2", fun
 
 var haveBatchAPI = internal.NewFeatureTest("map batch api", "5.6", func() error {
 	var maxEntries uint32 = 2
-	attr := sys.MapCreateAttr{
-		MapType:    sys.MapType(Hash),
+	attr := linux.MapCreateAttr{
+		MapType:    linux.MapType(Hash),
 		KeySize:    4,
 		ValueSize:  4,
 		MaxEntries: maxEntries,
 	}
 
-	fd, err := sys.MapCreate(&attr)
+	fd, err := linux.MapCreate(&attr)
 	if err != nil {
 		return internal.ErrNotSupported
 	}
@@ -229,7 +230,7 @@ var haveBatchAPI = internal.NewFeatureTest("map batch api", "5.6", func() error 
 	kp, _ := marshalMapSyscallInput(keys, 8)
 	vp, _ := marshalMapSyscallInput(values, 8)
 
-	err = sys.MapUpdateBatch(&sys.MapUpdateBatchAttr{
+	err = linux.MapUpdateBatch(&linux.MapUpdateBatchAttr{
 		MapFd:  fd.Uint(),
 		Keys:   kp,
 		Values: vp,
@@ -316,10 +317,10 @@ var haveProgramExtInfos = internal.NewFeatureTest("program ext_infos", "5.0", fu
 	}
 	bytecode := buf.Bytes()
 
-	_, err := sys.ProgLoad(&sys.ProgLoadAttr{
-		ProgType:    sys.ProgType(SocketFilter),
-		License:     sys.NewStringPointer("MIT"),
-		Insns:       sys.NewSlicePointer(bytecode),
+	_, err := linux.ProgLoad(&linux.ProgLoadAttr{
+		ProgType:    linux.ProgType(SocketFilter),
+		License:     linux.NewStringPointer("MIT"),
+		Insns:       linux.NewSlicePointer(bytecode),
 		InsnCnt:     uint32(len(bytecode) / asm.InstructionSize),
 		FuncInfoCnt: 1,
 		ProgBtfFd:   math.MaxUint32,

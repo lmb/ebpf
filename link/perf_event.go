@@ -12,6 +12,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/tracefs"
 	"github.com/cilium/ebpf/internal/unix"
@@ -138,16 +139,16 @@ func (pl *perfEventLink) PerfEvent() (*os.File, error) {
 }
 
 func (pl *perfEventLink) Info() (*Info, error) {
-	var info sys.PerfEventLinkInfo
-	if err := sys.ObjInfo(pl.fd, &info); err != nil {
+	var info linux.PerfEventLinkInfo
+	if err := linux.ObjInfo(pl.fd, &info); err != nil {
 		return nil, fmt.Errorf("perf event link info: %s", err)
 	}
 
 	var extra2 interface{}
 	switch info.PerfEventType {
-	case sys.BPF_PERF_EVENT_KPROBE, sys.BPF_PERF_EVENT_KRETPROBE:
-		var kprobeInfo sys.KprobeLinkInfo
-		if err := sys.ObjInfo(pl.fd, &kprobeInfo); err != nil {
+	case linux.BPF_PERF_EVENT_KPROBE, linux.BPF_PERF_EVENT_KRETPROBE:
+		var kprobeInfo linux.KprobeLinkInfo
+		if err := linux.ObjInfo(pl.fd, &kprobeInfo); err != nil {
 			return nil, fmt.Errorf("kprobe link info: %s", err)
 		}
 		extra2 = &KprobeInfo{
@@ -255,10 +256,10 @@ func attachPerfEventIoctl(pe *perfEvent, prog *ebpf.Program) (*perfEventIoctl, e
 //
 // https://github.com/torvalds/linux/commit/b89fbfbb854c9afc3047e8273cc3a694650b802e
 func attachPerfEventLink(pe *perfEvent, prog *ebpf.Program, cookie uint64) (*perfEventLink, error) {
-	fd, err := sys.LinkCreatePerfEvent(&sys.LinkCreatePerfEventAttr{
+	fd, err := linux.LinkCreatePerfEvent(&linux.LinkCreatePerfEventAttr{
 		ProgFd:     uint32(prog.FD()),
 		TargetFd:   pe.fd.Uint(),
-		AttachType: sys.BPF_PERF_EVENT,
+		AttachType: linux.BPF_PERF_EVENT,
 		BpfCookie:  cookie,
 	})
 	if err != nil {
@@ -320,9 +321,9 @@ var haveBPFLinkPerfEvent = internal.NewFeatureTest("bpf_link_perf_event", "5.15"
 	}
 	defer prog.Close()
 
-	_, err = sys.LinkCreatePerfEvent(&sys.LinkCreatePerfEventAttr{
+	_, err = linux.LinkCreatePerfEvent(&linux.LinkCreatePerfEventAttr{
 		ProgFd:     uint32(prog.FD()),
-		AttachType: sys.BPF_PERF_EVENT,
+		AttachType: linux.BPF_PERF_EVENT,
 	})
 	if errors.Is(err, unix.EINVAL) {
 		return internal.ErrNotSupported

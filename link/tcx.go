@@ -7,7 +7,7 @@ import (
 	"runtime"
 
 	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 )
 
 type TCXOptions struct {
@@ -35,9 +35,9 @@ func AttachTCX(opts TCXOptions) (Link, error) {
 		return nil, fmt.Errorf("disallowed flags: use Anchor to specify attach target")
 	}
 
-	attr := sys.LinkCreateTcxAttr{
+	attr := linux.LinkCreateTcxAttr{
 		ProgFd:           uint32(opts.Program.FD()),
-		AttachType:       sys.AttachType(opts.Attach),
+		AttachType:       linux.AttachType(opts.Attach),
 		TargetIfindex:    uint32(opts.Interface),
 		ExpectedRevision: opts.ExpectedRevision,
 		Flags:            opts.Flags,
@@ -53,7 +53,7 @@ func AttachTCX(opts TCXOptions) (Link, error) {
 		attr.Flags |= flags
 	}
 
-	fd, err := sys.LinkCreateTcx(&attr)
+	fd, err := linux.LinkCreateTcx(&attr)
 	runtime.KeepAlive(opts.Program)
 	runtime.KeepAlive(opts.Anchor)
 	if err != nil {
@@ -73,8 +73,8 @@ type tcxLink struct {
 var _ Link = (*tcxLink)(nil)
 
 func (tcx *tcxLink) Info() (*Info, error) {
-	var info sys.TcxLinkInfo
-	if err := sys.ObjInfo(tcx.fd, &info); err != nil {
+	var info linux.TcxLinkInfo
+	if err := linux.ObjInfo(tcx.fd, &info); err != nil {
 		return nil, fmt.Errorf("tcx link info: %s", err)
 	}
 	extra := &TCXInfo{

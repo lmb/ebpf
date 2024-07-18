@@ -12,7 +12,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/testutils"
 	"github.com/cilium/ebpf/internal/testutils/fdtrace"
 	"github.com/cilium/ebpf/internal/unix"
@@ -248,36 +248,36 @@ func testLink(t *testing.T, link Link, prog *ebpf.Program) {
 		}
 
 		switch info.Type {
-		case sys.BPF_LINK_TYPE_TRACING:
+		case linux.BPF_LINK_TYPE_TRACING:
 			if info.Tracing() == nil {
 				t.Fatalf("Failed to get link tracing extra info")
 			}
-		case sys.BPF_LINK_TYPE_CGROUP:
+		case linux.BPF_LINK_TYPE_CGROUP:
 			cg := info.Cgroup()
 			if cg.CgroupId == 0 {
 				t.Fatalf("Failed to get link Cgroup extra info")
 			}
-		case sys.BPF_LINK_TYPE_NETNS:
+		case linux.BPF_LINK_TYPE_NETNS:
 			netns := info.NetNs()
 			if netns.AttachType == 0 {
 				t.Fatalf("Failed to get link NetNs extra info")
 			}
-		case sys.BPF_LINK_TYPE_XDP:
+		case linux.BPF_LINK_TYPE_XDP:
 			xdp := info.XDP()
 			if xdp.Ifindex == 0 {
 				t.Fatalf("Failed to get link XDP extra info")
 			}
-		case sys.BPF_LINK_TYPE_TCX:
+		case linux.BPF_LINK_TYPE_TCX:
 			tcx := info.TCX()
 			if tcx.Ifindex == 0 {
 				t.Fatalf("Failed to get link TCX extra info")
 			}
-		case sys.BPF_LINK_TYPE_NETFILTER:
+		case linux.BPF_LINK_TYPE_NETFILTER:
 			nf := info.Netfilter()
 			if nf.Priority == 0 {
 				t.Fatalf("Failed to get link Netfilter extra info")
 			}
-		case sys.BPF_LINK_TYPE_KPROBE_MULTI:
+		case linux.BPF_LINK_TYPE_KPROBE_MULTI:
 			// test default Info data
 			kmulti := info.KprobeMulti()
 			if count, ok := kmulti.AddressCount(); ok {
@@ -288,11 +288,11 @@ func testLink(t *testing.T, link Link, prog *ebpf.Program) {
 				// NB: We don't check that missed is actually correct
 				// since it's not easy to trigger from tests.
 			}
-		case sys.BPF_LINK_TYPE_PERF_EVENT:
+		case linux.BPF_LINK_TYPE_PERF_EVENT:
 			// test default Info data
 			pevent := info.PerfEvent()
 			switch pevent.Type {
-			case sys.BPF_PERF_EVENT_KPROBE, sys.BPF_PERF_EVENT_KRETPROBE:
+			case linux.BPF_PERF_EVENT_KPROBE, linux.BPF_PERF_EVENT_KRETPROBE:
 				kp := pevent.Kprobe()
 				if addr, ok := kp.Address(); ok {
 					qt.Assert(t, qt.Not(qt.Equals(addr, 0)))

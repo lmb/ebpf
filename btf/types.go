@@ -11,7 +11,7 @@ import (
 
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 )
 
 // Mirrors MAX_RESOLVE_DEPTH in libbpf.
@@ -19,7 +19,7 @@ import (
 const maxResolveDepth = 32
 
 // TypeID identifies a type in a BTF section.
-type TypeID = sys.TypeID
+type TypeID = linux.TypeID
 
 // Type represents a type described by BTF.
 //

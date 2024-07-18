@@ -11,7 +11,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -80,24 +80,24 @@ func (ex *Executable) uprobeMulti(symbols []string, prog *ebpf.Program, opts *Up
 		return nil, fmt.Errorf("Cookies must be exactly Addresses in length: %w", errInvalidInput)
 	}
 
-	attr := &sys.LinkCreateUprobeMultiAttr{
-		Path:             sys.NewStringPointer(ex.path),
+	attr := &linux.LinkCreateUprobeMultiAttr{
+		Path:             linux.NewStringPointer(ex.path),
 		ProgFd:           uint32(prog.FD()),
-		AttachType:       sys.BPF_TRACE_UPROBE_MULTI,
+		AttachType:       linux.BPF_TRACE_UPROBE_MULTI,
 		UprobeMultiFlags: flags,
 		Count:            uint32(addrs),
-		Offsets:          sys.NewPointer(unsafe.Pointer(&addresses[0])),
+		Offsets:          linux.NewPointer(unsafe.Pointer(&addresses[0])),
 		Pid:              opts.PID,
 	}
 
 	if refCtrOffsets != 0 {
-		attr.RefCtrOffsets = sys.NewPointer(unsafe.Pointer(&opts.RefCtrOffsets[0]))
+		attr.RefCtrOffsets = linux.NewPointer(unsafe.Pointer(&opts.RefCtrOffsets[0]))
 	}
 	if cookies != 0 {
-		attr.Cookies = sys.NewPointer(unsafe.Pointer(&opts.Cookies[0]))
+		attr.Cookies = linux.NewPointer(unsafe.Pointer(&opts.Cookies[0]))
 	}
 
-	fd, err := sys.LinkCreateUprobeMulti(attr)
+	fd, err := linux.LinkCreateUprobeMulti(attr)
 	if errors.Is(err, unix.ESRCH) {
 		return nil, fmt.Errorf("%w (specified pid not found?)", os.ErrNotExist)
 	}
@@ -196,11 +196,11 @@ var haveBPFLinkUprobeMulti = internal.NewFeatureTest("bpf_link_uprobe_multi", "6
 
 	// We try to create uprobe multi link on '/' path which results in
 	// error with -EBADF in case uprobe multi link is supported.
-	fd, err := sys.LinkCreateUprobeMulti(&sys.LinkCreateUprobeMultiAttr{
+	fd, err := linux.LinkCreateUprobeMulti(&linux.LinkCreateUprobeMultiAttr{
 		ProgFd:     uint32(prog.FD()),
-		AttachType: sys.BPF_TRACE_UPROBE_MULTI,
-		Path:       sys.NewStringPointer("/"),
-		Offsets:    sys.NewPointer(unsafe.Pointer(&[]uint64{0})),
+		AttachType: linux.BPF_TRACE_UPROBE_MULTI,
+		Path:       linux.NewStringPointer("/"),
+		Offsets:    linux.NewPointer(unsafe.Pointer(&[]uint64{0})),
 		Count:      1,
 	})
 	switch {

@@ -7,7 +7,7 @@ import (
 	"runtime"
 
 	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 )
 
 type NetkitOptions struct {
@@ -35,9 +35,9 @@ func AttachNetkit(opts NetkitOptions) (Link, error) {
 		return nil, fmt.Errorf("disallowed flags: use Anchor to specify attach target")
 	}
 
-	attr := sys.LinkCreateNetkitAttr{
+	attr := linux.LinkCreateNetkitAttr{
 		ProgFd:           uint32(opts.Program.FD()),
-		AttachType:       sys.AttachType(opts.Attach),
+		AttachType:       linux.AttachType(opts.Attach),
 		TargetIfindex:    uint32(opts.Interface),
 		ExpectedRevision: opts.ExpectedRevision,
 		Flags:            opts.Flags,
@@ -53,7 +53,7 @@ func AttachNetkit(opts NetkitOptions) (Link, error) {
 		attr.Flags |= flags
 	}
 
-	fd, err := sys.LinkCreateNetkit(&attr)
+	fd, err := linux.LinkCreateNetkit(&attr)
 	runtime.KeepAlive(opts.Program)
 	runtime.KeepAlive(opts.Anchor)
 	if err != nil {
@@ -73,8 +73,8 @@ type netkitLink struct {
 var _ Link = (*netkitLink)(nil)
 
 func (netkit *netkitLink) Info() (*Info, error) {
-	var info sys.NetkitLinkInfo
-	if err := sys.ObjInfo(netkit.fd, &info); err != nil {
+	var info linux.NetkitLinkInfo
+	if err := linux.ObjInfo(netkit.fd, &info); err != nil {
 		return nil, fmt.Errorf("netkit link info: %s", err)
 	}
 	extra := &NetkitInfo{

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 )
 
@@ -47,9 +48,9 @@ func AttachNetfilter(opts NetfilterOptions) (Link, error) {
 		return nil, fmt.Errorf("invalid program: %s", sys.ErrClosedFd)
 	}
 
-	attr := sys.LinkCreateNetfilterAttr{
+	attr := linux.LinkCreateNetfilterAttr{
 		ProgFd:         uint32(opts.Program.FD()),
-		AttachType:     sys.BPF_NETFILTER,
+		AttachType:     linux.BPF_NETFILTER,
 		Flags:          opts.Flags,
 		Pf:             uint32(opts.ProtocolFamily),
 		Hooknum:        uint32(opts.HookNumber),
@@ -57,7 +58,7 @@ func AttachNetfilter(opts NetfilterOptions) (Link, error) {
 		NetfilterFlags: uint32(opts.NetfilterFlags),
 	}
 
-	fd, err := sys.LinkCreateNetfilter(&attr)
+	fd, err := linux.LinkCreateNetfilter(&attr)
 	if err != nil {
 		return nil, fmt.Errorf("attach netfilter link: %w", err)
 	}
@@ -70,8 +71,8 @@ func (*netfilterLink) Update(new *ebpf.Program) error {
 }
 
 func (nf *netfilterLink) Info() (*Info, error) {
-	var info sys.NetfilterLinkInfo
-	if err := sys.ObjInfo(nf.fd, &info); err != nil {
+	var info linux.NetfilterLinkInfo
+	if err := linux.ObjInfo(nf.fd, &info); err != nil {
 		return nil, fmt.Errorf("netfilter link info: %s", err)
 	}
 	extra := &NetfilterInfo{

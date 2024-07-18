@@ -10,7 +10,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -21,10 +21,10 @@ func HaveMapType(mt ebpf.MapType) error {
 	return haveMapTypeMatrix.Result(mt)
 }
 
-func probeCgroupStorageMap(mt sys.MapType) error {
+func probeCgroupStorageMap(mt linux.MapType) error {
 	// keySize needs to be sizeof(struct{u32 + u64}) = 12 (+ padding = 16)
 	// by using unsafe.Sizeof(int) we are making sure that this works on 32bit and 64bit archs
-	return createMap(&sys.MapCreateAttr{
+	return createMap(&linux.MapCreateAttr{
 		MapType:    mt,
 		ValueSize:  4,
 		KeySize:    uint32(8 + unsafe.Sizeof(int(0))),
@@ -32,12 +32,12 @@ func probeCgroupStorageMap(mt sys.MapType) error {
 	})
 }
 
-func probeStorageMap(mt sys.MapType) error {
+func probeStorageMap(mt linux.MapType) error {
 	// maxEntries needs to be 0
 	// BPF_F_NO_PREALLOC needs to be set
 	// btf* fields need to be set
 	// see alloc_check for local_storage map types
-	err := createMap(&sys.MapCreateAttr{
+	err := createMap(&linux.MapCreateAttr{
 		MapType:        mt,
 		KeySize:        4,
 		ValueSize:      4,
@@ -54,10 +54,10 @@ func probeStorageMap(mt sys.MapType) error {
 	return err
 }
 
-func probeNestedMap(mt sys.MapType) error {
+func probeNestedMap(mt linux.MapType) error {
 	// assign invalid innerMapFd to pass validation check
 	// will return EBADF
-	err := probeMap(&sys.MapCreateAttr{
+	err := probeMap(&linux.MapCreateAttr{
 		MapType:    mt,
 		InnerMapFd: ^uint32(0),
 	})
@@ -67,7 +67,7 @@ func probeNestedMap(mt sys.MapType) error {
 	return err
 }
 
-func probeMap(attr *sys.MapCreateAttr) error {
+func probeMap(attr *linux.MapCreateAttr) error {
 	if attr.KeySize == 0 {
 		attr.KeySize = 4
 	}
@@ -78,8 +78,8 @@ func probeMap(attr *sys.MapCreateAttr) error {
 	return createMap(attr)
 }
 
-func createMap(attr *sys.MapCreateAttr) error {
-	fd, err := sys.MapCreate(attr)
+func createMap(attr *linux.MapCreateAttr) error {
+	fd, err := linux.MapCreate(attr)
 	if err == nil {
 		fd.Close()
 		return nil
@@ -107,8 +107,8 @@ var haveMapTypeMatrix = internal.FeatureMatrix[ebpf.MapType]{
 	ebpf.StackTrace: {
 		Version: "4.6",
 		Fn: func() error {
-			return probeMap(&sys.MapCreateAttr{
-				MapType:   sys.BPF_MAP_TYPE_STACK_TRACE,
+			return probeMap(&linux.MapCreateAttr{
+				MapType:   linux.BPF_MAP_TYPE_STACK_TRACE,
 				ValueSize: 8, // sizeof(uint64)
 			})
 		},
@@ -121,8 +121,8 @@ var haveMapTypeMatrix = internal.FeatureMatrix[ebpf.MapType]{
 		Fn: func() error {
 			// keySize and valueSize need to be sizeof(struct{u32 + u8}) + 1 + padding = 8
 			// BPF_F_NO_PREALLOC needs to be set
-			return probeMap(&sys.MapCreateAttr{
-				MapType:   sys.BPF_MAP_TYPE_LPM_TRIE,
+			return probeMap(&linux.MapCreateAttr{
+				MapType:   linux.BPF_MAP_TYPE_LPM_TRIE,
 				KeySize:   8,
 				ValueSize: 8,
 				MapFlags:  unix.BPF_F_NO_PREALLOC,
@@ -131,11 +131,11 @@ var haveMapTypeMatrix = internal.FeatureMatrix[ebpf.MapType]{
 	},
 	ebpf.ArrayOfMaps: {
 		Version: "4.12",
-		Fn:      func() error { return probeNestedMap(sys.BPF_MAP_TYPE_ARRAY_OF_MAPS) },
+		Fn:      func() error { return probeNestedMap(linux.BPF_MAP_TYPE_ARRAY_OF_MAPS) },
 	},
 	ebpf.HashOfMaps: {
 		Version: "4.12",
-		Fn:      func() error { return probeNestedMap(sys.BPF_MAP_TYPE_HASH_OF_MAPS) },
+		Fn:      func() error { return probeNestedMap(linux.BPF_MAP_TYPE_HASH_OF_MAPS) },
 	},
 	ebpf.DevMap:   {Version: "4.14"},
 	ebpf.SockMap:  {Version: "4.14"},
@@ -144,18 +144,18 @@ var haveMapTypeMatrix = internal.FeatureMatrix[ebpf.MapType]{
 	ebpf.SockHash: {Version: "4.18"},
 	ebpf.CGroupStorage: {
 		Version: "4.19",
-		Fn:      func() error { return probeCgroupStorageMap(sys.BPF_MAP_TYPE_CGROUP_STORAGE) },
+		Fn:      func() error { return probeCgroupStorageMap(linux.BPF_MAP_TYPE_CGROUP_STORAGE) },
 	},
 	ebpf.ReusePortSockArray: {Version: "4.19"},
 	ebpf.PerCPUCGroupStorage: {
 		Version: "4.20",
-		Fn:      func() error { return probeCgroupStorageMap(sys.BPF_MAP_TYPE_PERCPU_CGROUP_STORAGE) },
+		Fn:      func() error { return probeCgroupStorageMap(linux.BPF_MAP_TYPE_PERCPU_CGROUP_STORAGE) },
 	},
 	ebpf.Queue: {
 		Version: "4.20",
 		Fn: func() error {
-			return createMap(&sys.MapCreateAttr{
-				MapType:    sys.BPF_MAP_TYPE_QUEUE,
+			return createMap(&linux.MapCreateAttr{
+				MapType:    linux.BPF_MAP_TYPE_QUEUE,
 				KeySize:    0,
 				ValueSize:  4,
 				MaxEntries: 1,
@@ -165,8 +165,8 @@ var haveMapTypeMatrix = internal.FeatureMatrix[ebpf.MapType]{
 	ebpf.Stack: {
 		Version: "4.20",
 		Fn: func() error {
-			return createMap(&sys.MapCreateAttr{
-				MapType:    sys.BPF_MAP_TYPE_STACK,
+			return createMap(&linux.MapCreateAttr{
+				MapType:    linux.BPF_MAP_TYPE_STACK,
 				KeySize:    0,
 				ValueSize:  4,
 				MaxEntries: 1,
@@ -175,7 +175,7 @@ var haveMapTypeMatrix = internal.FeatureMatrix[ebpf.MapType]{
 	},
 	ebpf.SkStorage: {
 		Version: "5.2",
-		Fn:      func() error { return probeStorageMap(sys.BPF_MAP_TYPE_SK_STORAGE) },
+		Fn:      func() error { return probeStorageMap(linux.BPF_MAP_TYPE_SK_STORAGE) },
 	},
 	ebpf.DevMapHash: {Version: "5.4"},
 	ebpf.StructOpsMap: {
@@ -183,11 +183,11 @@ var haveMapTypeMatrix = internal.FeatureMatrix[ebpf.MapType]{
 		Fn: func() error {
 			// StructOps requires setting a vmlinux type id, but id 1 will always
 			// resolve to some type of integer. This will cause ENOTSUPP.
-			err := probeMap(&sys.MapCreateAttr{
-				MapType:               sys.BPF_MAP_TYPE_STRUCT_OPS,
+			err := probeMap(&linux.MapCreateAttr{
+				MapType:               linux.BPF_MAP_TYPE_STRUCT_OPS,
 				BtfVmlinuxValueTypeId: 1,
 			})
-			if errors.Is(err, sys.ENOTSUPP) {
+			if errors.Is(err, linux.ENOTSUPP) {
 				// ENOTSUPP means the map type is at least known to the kernel.
 				return nil
 			}
@@ -199,8 +199,8 @@ var haveMapTypeMatrix = internal.FeatureMatrix[ebpf.MapType]{
 		Fn: func() error {
 			// keySize and valueSize need to be 0
 			// maxEntries needs to be power of 2 and PAGE_ALIGNED
-			return createMap(&sys.MapCreateAttr{
-				MapType:    sys.BPF_MAP_TYPE_RINGBUF,
+			return createMap(&linux.MapCreateAttr{
+				MapType:    linux.BPF_MAP_TYPE_RINGBUF,
 				KeySize:    0,
 				ValueSize:  0,
 				MaxEntries: uint32(os.Getpagesize()),
@@ -209,11 +209,11 @@ var haveMapTypeMatrix = internal.FeatureMatrix[ebpf.MapType]{
 	},
 	ebpf.InodeStorage: {
 		Version: "5.10",
-		Fn:      func() error { return probeStorageMap(sys.BPF_MAP_TYPE_INODE_STORAGE) },
+		Fn:      func() error { return probeStorageMap(linux.BPF_MAP_TYPE_INODE_STORAGE) },
 	},
 	ebpf.TaskStorage: {
 		Version: "5.11",
-		Fn:      func() error { return probeStorageMap(sys.BPF_MAP_TYPE_TASK_STORAGE) },
+		Fn:      func() error { return probeStorageMap(linux.BPF_MAP_TYPE_TASK_STORAGE) },
 	},
 }
 
@@ -222,22 +222,22 @@ func init() {
 		ft.Name = mt.String()
 		if ft.Fn == nil {
 			// Avoid referring to the loop variable in the closure.
-			mt := sys.MapType(mt)
-			ft.Fn = func() error { return probeMap(&sys.MapCreateAttr{MapType: mt}) }
+			mt := linux.MapType(mt)
+			ft.Fn = func() error { return probeMap(&linux.MapCreateAttr{MapType: mt}) }
 		}
 	}
 }
 
 // MapFlags document which flags may be feature probed.
-type MapFlags = sys.MapFlags
+type MapFlags = linux.MapFlags
 
 // Flags which may be feature probed.
 const (
-	BPF_F_NO_PREALLOC = sys.BPF_F_NO_PREALLOC
-	BPF_F_RDONLY_PROG = sys.BPF_F_RDONLY_PROG
-	BPF_F_WRONLY_PROG = sys.BPF_F_WRONLY_PROG
-	BPF_F_MMAPABLE    = sys.BPF_F_MMAPABLE
-	BPF_F_INNER_MAP   = sys.BPF_F_INNER_MAP
+	BPF_F_NO_PREALLOC = linux.BPF_F_NO_PREALLOC
+	BPF_F_RDONLY_PROG = linux.BPF_F_RDONLY_PROG
+	BPF_F_WRONLY_PROG = linux.BPF_F_WRONLY_PROG
+	BPF_F_MMAPABLE    = linux.BPF_F_MMAPABLE
+	BPF_F_INNER_MAP   = linux.BPF_F_INNER_MAP
 )
 
 // HaveMapFlag probes the running kernel for the availability of the specified map flag.
@@ -248,20 +248,20 @@ func HaveMapFlag(flag MapFlags) (err error) {
 	return haveMapFlagsMatrix.Result(flag)
 }
 
-func probeMapFlag(attr *sys.MapCreateAttr) error {
+func probeMapFlag(attr *linux.MapCreateAttr) error {
 	// For now, we do not check if the map type is supported because we only support
 	// probing for flags defined on arrays and hashes that are always supported.
 	// In the future, if we allow probing on flags defined on newer types, checking for map type
 	// support will be required.
-	if attr.MapType == sys.BPF_MAP_TYPE_UNSPEC {
-		attr.MapType = sys.BPF_MAP_TYPE_ARRAY
+	if attr.MapType == linux.BPF_MAP_TYPE_UNSPEC {
+		attr.MapType = linux.BPF_MAP_TYPE_ARRAY
 	}
 
 	attr.KeySize = 4
 	attr.ValueSize = 4
 	attr.MaxEntries = 1
 
-	fd, err := sys.MapCreate(attr)
+	fd, err := linux.MapCreate(attr)
 	if err == nil {
 		fd.Close()
 	} else if errors.Is(err, unix.EINVAL) {
@@ -276,8 +276,8 @@ var haveMapFlagsMatrix = internal.FeatureMatrix[MapFlags]{
 	BPF_F_NO_PREALLOC: {
 		Version: "4.6",
 		Fn: func() error {
-			return probeMapFlag(&sys.MapCreateAttr{
-				MapType:  sys.BPF_MAP_TYPE_HASH,
+			return probeMapFlag(&linux.MapCreateAttr{
+				MapType:  linux.BPF_MAP_TYPE_HASH,
 				MapFlags: BPF_F_NO_PREALLOC,
 			})
 		},
@@ -285,7 +285,7 @@ var haveMapFlagsMatrix = internal.FeatureMatrix[MapFlags]{
 	BPF_F_RDONLY_PROG: {
 		Version: "5.2",
 		Fn: func() error {
-			return probeMapFlag(&sys.MapCreateAttr{
+			return probeMapFlag(&linux.MapCreateAttr{
 				MapFlags: BPF_F_RDONLY_PROG,
 			})
 		},
@@ -293,7 +293,7 @@ var haveMapFlagsMatrix = internal.FeatureMatrix[MapFlags]{
 	BPF_F_WRONLY_PROG: {
 		Version: "5.2",
 		Fn: func() error {
-			return probeMapFlag(&sys.MapCreateAttr{
+			return probeMapFlag(&linux.MapCreateAttr{
 				MapFlags: BPF_F_WRONLY_PROG,
 			})
 		},
@@ -301,7 +301,7 @@ var haveMapFlagsMatrix = internal.FeatureMatrix[MapFlags]{
 	BPF_F_MMAPABLE: {
 		Version: "5.5",
 		Fn: func() error {
-			return probeMapFlag(&sys.MapCreateAttr{
+			return probeMapFlag(&linux.MapCreateAttr{
 				MapFlags: BPF_F_MMAPABLE,
 			})
 		},
@@ -309,7 +309,7 @@ var haveMapFlagsMatrix = internal.FeatureMatrix[MapFlags]{
 	BPF_F_INNER_MAP: {
 		Version: "5.10",
 		Fn: func() error {
-			return probeMapFlag(&sys.MapCreateAttr{
+			return probeMapFlag(&linux.MapCreateAttr{
 				MapFlags: BPF_F_INNER_MAP,
 			})
 		},

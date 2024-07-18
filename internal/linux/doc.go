@@ -1,5 +1,5 @@
-// Package sys contains bindings for the BPF syscall.
-package sys
+// Package linux contains bindings for the BPF syscall.
+package linux
 
 // Regenerate types.go by invoking go generate in the current directory.
 

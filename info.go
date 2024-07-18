@@ -16,6 +16,7 @@ import (
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/unix"
 )
@@ -52,8 +53,8 @@ type MapInfo struct {
 }
 
 func newMapInfoFromFd(fd *sys.FD) (*MapInfo, error) {
-	var info sys.MapInfo
-	err := sys.ObjInfo(fd, &info)
+	var info linux.MapInfo
+	err := linux.ObjInfo(fd, &info)
 	if errors.Is(err, syscall.EINVAL) {
 		return newMapInfoFromProc(fd)
 	}
@@ -144,8 +145,8 @@ type ProgramInfo struct {
 }
 
 func newProgramInfoFromFd(fd *sys.FD) (*ProgramInfo, error) {
-	var info sys.ProgInfo
-	err := sys.ObjInfo(fd, &info)
+	var info linux.ProgInfo
+	err := linux.ObjInfo(fd, &info)
 	if errors.Is(err, syscall.EINVAL) {
 		return newProgramInfoFromProc(fd)
 	}
@@ -167,14 +168,14 @@ func newProgramInfoFromFd(fd *sys.FD) (*ProgramInfo, error) {
 	}
 
 	// Start with a clean struct for the second call, otherwise we may get EFAULT.
-	var info2 sys.ProgInfo
+	var info2 linux.ProgInfo
 
 	makeSecondCall := false
 
 	if info.NrMapIds > 0 {
 		pi.maps = make([]MapID, info.NrMapIds)
 		info2.NrMapIds = info.NrMapIds
-		info2.MapIds = sys.NewPointer(unsafe.Pointer(&pi.maps[0]))
+		info2.MapIds = linux.NewPointer(unsafe.Pointer(&pi.maps[0]))
 		makeSecondCall = true
 	} else if haveProgramInfoMapIDs() == nil {
 		// This program really has no associated maps.
@@ -193,13 +194,13 @@ func newProgramInfoFromFd(fd *sys.FD) (*ProgramInfo, error) {
 	if info.XlatedProgLen > 0 {
 		pi.insns = make([]byte, info.XlatedProgLen)
 		info2.XlatedProgLen = info.XlatedProgLen
-		info2.XlatedProgInsns = sys.NewSlicePointer(pi.insns)
+		info2.XlatedProgInsns = linux.NewSlicePointer(pi.insns)
 		makeSecondCall = true
 	}
 
 	if info.NrLineInfo > 0 {
 		pi.lineInfos = make([]byte, btf.LineInfoSize*info.NrLineInfo)
-		info2.LineInfo = sys.NewSlicePointer(pi.lineInfos)
+		info2.LineInfo = linux.NewSlicePointer(pi.lineInfos)
 		info2.LineInfoRecSize = btf.LineInfoSize
 		info2.NrLineInfo = info.NrLineInfo
 		pi.numLineInfos = info.NrLineInfo
@@ -208,7 +209,7 @@ func newProgramInfoFromFd(fd *sys.FD) (*ProgramInfo, error) {
 
 	if info.NrFuncInfo > 0 {
 		pi.funcInfos = make([]byte, btf.FuncInfoSize*info.NrFuncInfo)
-		info2.FuncInfo = sys.NewSlicePointer(pi.funcInfos)
+		info2.FuncInfo = linux.NewSlicePointer(pi.funcInfos)
 		info2.FuncInfoRecSize = btf.FuncInfoSize
 		info2.NrFuncInfo = info.NrFuncInfo
 		pi.numFuncInfos = info.NrFuncInfo
@@ -216,7 +217,7 @@ func newProgramInfoFromFd(fd *sys.FD) (*ProgramInfo, error) {
 	}
 
 	if makeSecondCall {
-		if err := sys.ObjInfo(fd, &info2); err != nil {
+		if err := linux.ObjInfo(fd, &info2); err != nil {
 			return nil, err
 		}
 	}
@@ -462,7 +463,7 @@ func scanFdInfoReader(r io.Reader, fields map[string]interface{}) error {
 //
 // Requires at least 5.8.
 func EnableStats(which uint32) (io.Closer, error) {
-	fd, err := sys.EnableStats(&sys.EnableStatsAttr{
+	fd, err := linux.EnableStats(&linux.EnableStatsAttr{
 		Type: which,
 	})
 	if err != nil {
@@ -481,7 +482,7 @@ var haveProgramInfoMapIDs = internal.NewFeatureTest("map IDs in program info", "
 	}
 	defer prog.Close()
 
-	err = sys.ObjInfo(prog, &sys.ProgInfo{
+	err = linux.ObjInfo(prog, &linux.ProgInfo{
 		// NB: Don't need to allocate MapIds since the program isn't using
 		// any maps.
 		NrMapIds: 1,

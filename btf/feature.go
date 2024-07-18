@@ -7,7 +7,7 @@ import (
 	"math"
 
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -112,8 +112,8 @@ func probeBTF(typ Type) error {
 		return err
 	}
 
-	fd, err := sys.BtfLoad(&sys.BtfLoadAttr{
-		Btf:     sys.NewSlicePointer(buf),
+	fd, err := linux.BtfLoad(&linux.BtfLoadAttr{
+		Btf:     linux.NewSlicePointer(buf),
 		BtfSize: uint32(len(buf)),
 	})
 

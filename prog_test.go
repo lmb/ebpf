@@ -20,7 +20,7 @@ import (
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/testutils"
 	"github.com/cilium/ebpf/internal/unix"
 )
@@ -112,11 +112,11 @@ func TestProgramRunWithOptions(t *testing.T) {
 	defer prog.Close()
 
 	buf := internal.EmptyBPFContext
-	xdp := sys.XdpMd{
+	xdp := linux.XdpMd{
 		Data:    0,
 		DataEnd: uint32(len(buf)),
 	}
-	xdpOut := sys.XdpMd{}
+	xdpOut := linux.XdpMd{}
 	opts := RunOptions{
 		Data:       buf,
 		Context:    xdp,
@@ -190,7 +190,7 @@ func TestProgramRunEmptyData(t *testing.T) {
 	defer prog.Close()
 
 	opts := RunOptions{
-		Context: sys.SkLookup{
+		Context: linux.SkLookup{
 			Family: syscall.AF_INET,
 		},
 	}
@@ -548,8 +548,8 @@ func TestProgramName(t *testing.T) {
 
 	prog := mustSocketFilter(t)
 
-	var info sys.ProgInfo
-	if err := sys.ObjInfo(prog.fd, &info); err != nil {
+	var info linux.ProgInfo
+	if err := linux.ObjInfo(prog.fd, &info); err != nil {
 		t.Fatal(err)
 	}
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/tracefs"
 	"github.com/cilium/ebpf/internal/unix"
@@ -305,7 +306,7 @@ func pmuProbe(args tracefs.ProbeArgs) (*perfEvent, error) {
 	}
 	// Since at least commit cb9a19fe4aa51, ENOTSUPP is returned
 	// when attempting to set a uprobe on a trap instruction.
-	if errors.Is(err, sys.ENOTSUPP) {
+	if errors.Is(err, linux.ENOTSUPP) {
 		return nil, fmt.Errorf("token %s: failed setting uprobe on offset %#x (possible trap insn): %w", token, args.Offset, err)
 	}
 

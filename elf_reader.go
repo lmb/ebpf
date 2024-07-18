@@ -15,7 +15,7 @@ import (
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -1210,8 +1210,8 @@ func (ec *elfCode) loadKsymsSection() error {
 
 type libbpfElfSectionDef struct {
 	pattern     string
-	programType sys.ProgType
-	attachType  sys.AttachType
+	programType linux.ProgType
+	attachType  linux.AttachType
 	flags       libbpfElfSectionFlag
 }
 
@@ -1240,14 +1240,14 @@ func init() {
 	// We prepend libbpf definitions since they contain a prefix match
 	// for "xdp".
 	elfSectionDefs = append([]libbpfElfSectionDef{
-		{"xdp.frags/", sys.BPF_PROG_TYPE_XDP, sys.BPF_XDP, _SEC_XDP_FRAGS | ignoreExtra},
-		{"xdp.frags_devmap/", sys.BPF_PROG_TYPE_XDP, sys.BPF_XDP_DEVMAP, _SEC_XDP_FRAGS},
-		{"xdp_devmap/", sys.BPF_PROG_TYPE_XDP, sys.BPF_XDP_DEVMAP, 0},
-		{"xdp.frags_cpumap/", sys.BPF_PROG_TYPE_XDP, sys.BPF_XDP_CPUMAP, _SEC_XDP_FRAGS},
-		{"xdp_cpumap/", sys.BPF_PROG_TYPE_XDP, sys.BPF_XDP_CPUMAP, 0},
+		{"xdp.frags/", linux.BPF_PROG_TYPE_XDP, linux.BPF_XDP, _SEC_XDP_FRAGS | ignoreExtra},
+		{"xdp.frags_devmap/", linux.BPF_PROG_TYPE_XDP, linux.BPF_XDP_DEVMAP, _SEC_XDP_FRAGS},
+		{"xdp_devmap/", linux.BPF_PROG_TYPE_XDP, linux.BPF_XDP_DEVMAP, 0},
+		{"xdp.frags_cpumap/", linux.BPF_PROG_TYPE_XDP, linux.BPF_XDP_CPUMAP, _SEC_XDP_FRAGS},
+		{"xdp_cpumap/", linux.BPF_PROG_TYPE_XDP, linux.BPF_XDP_CPUMAP, 0},
 		// This has been in the library since the beginning of time. Not sure
 		// where it came from.
-		{"seccomp", sys.BPF_PROG_TYPE_SOCKET_FILTER, 0, _SEC_NONE},
+		{"seccomp", linux.BPF_PROG_TYPE_SOCKET_FILTER, 0, _SEC_NONE},
 	}, elfSectionDefs...)
 }
 

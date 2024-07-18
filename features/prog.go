@@ -11,7 +11,7 @@ import (
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -112,7 +112,7 @@ var haveProgramTypeMatrix = internal.FeatureMatrix[ebpf.ProgramType]{
 				Type:    ebpf.StructOps,
 				License: "GPL",
 			})
-			if errors.Is(err, sys.ENOTSUPP) {
+			if errors.Is(err, linux.ENOTSUPP) {
 				// ENOTSUPP means the program type is at least known to the kernel.
 				return nil
 			}

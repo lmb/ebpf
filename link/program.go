@@ -7,7 +7,7 @@ import (
 	"runtime"
 
 	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 )
 
 type RawAttachProgramOptions struct {
@@ -36,7 +36,7 @@ func RawAttachProgram(opts RawAttachProgramOptions) error {
 		return fmt.Errorf("disallowed flags: use Anchor to specify attach target")
 	}
 
-	attr := sys.ProgAttachAttr{
+	attr := linux.ProgAttachAttr{
 		TargetFdOrIfindex: uint32(opts.Target),
 		AttachBpfFd:       uint32(opts.Program.FD()),
 		AttachType:        uint32(opts.Attach),
@@ -50,7 +50,7 @@ func RawAttachProgram(opts RawAttachProgramOptions) error {
 			return fmt.Errorf("attach program: %w", err)
 		}
 
-		if flags == sys.BPF_F_REPLACE {
+		if flags == linux.BPF_F_REPLACE {
 			// Ensure that replacing a program works on old kernels.
 			attr.ReplaceBpfFd = fdOrID
 		} else {
@@ -59,7 +59,7 @@ func RawAttachProgram(opts RawAttachProgramOptions) error {
 		}
 	}
 
-	if err := sys.ProgAttach(&attr); err != nil {
+	if err := linux.ProgAttach(&attr); err != nil {
 		if haveFeatErr := haveProgAttach(); haveFeatErr != nil {
 			return haveFeatErr
 		}
@@ -81,7 +81,7 @@ func RawDetachProgram(opts RawDetachProgramOptions) error {
 		return fmt.Errorf("disallowed flags: use Anchor to specify attach target")
 	}
 
-	attr := sys.ProgDetachAttr{
+	attr := linux.ProgDetachAttr{
 		TargetFdOrIfindex: uint32(opts.Target),
 		AttachBpfFd:       uint32(opts.Program.FD()),
 		AttachType:        uint32(opts.Attach),
@@ -98,7 +98,7 @@ func RawDetachProgram(opts RawDetachProgramOptions) error {
 		attr.AttachFlags |= flags
 	}
 
-	if err := sys.ProgDetach(&attr); err != nil {
+	if err := linux.ProgDetach(&attr); err != nil {
 		if haveFeatErr := haveProgAttach(); haveFeatErr != nil {
 			return haveFeatErr
 		}

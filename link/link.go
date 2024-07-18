@@ -10,6 +10,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 )
 
@@ -71,8 +72,8 @@ func NewFromFD(fd int) (Link, error) {
 //
 // Returns ErrNotExist if there is no link with the given id.
 func NewFromID(id ID) (Link, error) {
-	getFdAttr := &sys.LinkGetFdByIdAttr{Id: id}
-	fd, err := sys.LinkGetFdById(getFdAttr)
+	getFdAttr := &linux.LinkGetFdByIdAttr{Id: id}
+	fd, err := linux.LinkGetFdById(getFdAttr)
 	if err != nil {
 		return nil, fmt.Errorf("get link fd from ID %d: %w", id, err)
 	}
@@ -136,7 +137,7 @@ func wrapRawLink(raw *RawLink) (_ Link, err error) {
 }
 
 // ID uniquely identifies a BPF link.
-type ID = sys.LinkID
+type ID = linux.LinkID
 
 // RawLinkOptions control the creation of a raw link.
 type RawLinkOptions struct {
@@ -161,25 +162,25 @@ type Info struct {
 }
 
 type TracingInfo struct {
-	AttachType  sys.AttachType
+	AttachType  linux.AttachType
 	TargetObjId uint32
-	TargetBtfId sys.TypeID
+	TargetBtfId linux.TypeID
 }
 
 type CgroupInfo struct {
 	CgroupId   uint64
-	AttachType sys.AttachType
+	AttachType linux.AttachType
 	_          [4]byte
 }
 
 type NetNsInfo struct {
 	NetnsIno   uint32
-	AttachType sys.AttachType
+	AttachType linux.AttachType
 }
 
 type TCXInfo struct {
 	Ifindex    uint32
-	AttachType sys.AttachType
+	AttachType linux.AttachType
 }
 
 type XDPInfo struct {
@@ -195,7 +196,7 @@ type NetfilterInfo struct {
 
 type NetkitInfo struct {
 	Ifindex    uint32
-	AttachType sys.AttachType
+	AttachType linux.AttachType
 }
 
 type KprobeMultiInfo struct {
@@ -218,7 +219,7 @@ func (kpm *KprobeMultiInfo) Missed() (uint64, bool) {
 }
 
 type PerfEventInfo struct {
-	Type  sys.PerfEventType
+	Type  linux.PerfEventType
 	extra interface{}
 }
 
@@ -336,14 +337,14 @@ func AttachRawLink(opts RawLinkOptions) (*RawLink, error) {
 		return nil, fmt.Errorf("invalid program: %s", sys.ErrClosedFd)
 	}
 
-	attr := sys.LinkCreateAttr{
+	attr := linux.LinkCreateAttr{
 		TargetFd:    uint32(opts.Target),
 		ProgFd:      uint32(progFd),
-		AttachType:  sys.AttachType(opts.Attach),
+		AttachType:  linux.AttachType(opts.Attach),
 		TargetBtfId: opts.BTF,
 		Flags:       opts.Flags,
 	}
-	fd, err := sys.LinkCreate(&attr)
+	fd, err := linux.LinkCreate(&attr)
 	if err != nil {
 		return nil, fmt.Errorf("create link: %w", err)
 	}
@@ -352,8 +353,8 @@ func AttachRawLink(opts RawLinkOptions) (*RawLink, error) {
 }
 
 func loadPinnedRawLink(fileName string, opts *ebpf.LoadPinOptions) (*RawLink, error) {
-	fd, err := sys.ObjGet(&sys.ObjGetAttr{
-		Pathname:  sys.NewStringPointer(fileName),
+	fd, err := linux.ObjGet(&linux.ObjGetAttr{
+		Pathname:  linux.NewStringPointer(fileName),
 		FileFlags: opts.Marshal(),
 	})
 	if err != nil {
@@ -432,13 +433,13 @@ func (l *RawLink) UpdateArgs(opts RawLinkUpdateOptions) error {
 		}
 	}
 
-	attr := sys.LinkUpdateAttr{
+	attr := linux.LinkUpdateAttr{
 		LinkFd:    l.fd.Uint(),
 		NewProgFd: uint32(newFd),
 		OldProgFd: uint32(oldFd),
 		Flags:     opts.Flags,
 	}
-	return sys.LinkUpdate(&attr)
+	return linux.LinkUpdate(&attr)
 }
 
 // Info returns metadata about the link.
@@ -446,9 +447,9 @@ func (l *RawLink) UpdateArgs(opts RawLinkUpdateOptions) error {
 // Linktype specific metadata is not included and can be retrieved
 // via the linktype specific Info() method.
 func (l *RawLink) Info() (*Info, error) {
-	var info sys.LinkInfo
+	var info linux.LinkInfo
 
-	if err := sys.ObjInfo(l.fd, &info); err != nil {
+	if err := linux.ObjInfo(l.fd, &info); err != nil {
 		return nil, fmt.Errorf("link info: %s", err)
 	}
 
@@ -476,8 +477,8 @@ type Iterator struct {
 func (it *Iterator) Next() bool {
 	id := it.ID
 	for {
-		getIdAttr := &sys.LinkGetNextIdAttr{Id: id}
-		err := sys.LinkGetNextId(getIdAttr)
+		getIdAttr := &linux.LinkGetNextIdAttr{Id: id}
+		err := linux.LinkGetNextId(getIdAttr)
 		if errors.Is(err, os.ErrNotExist) {
 			// There are no more links.
 			break

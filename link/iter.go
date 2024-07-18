@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 )
 
@@ -41,14 +42,14 @@ func AttachIter(opts IterOptions) (*Iter, error) {
 		info.map_fd = uint32(mapFd)
 	}
 
-	attr := sys.LinkCreateIterAttr{
+	attr := linux.LinkCreateIterAttr{
 		ProgFd:      uint32(progFd),
-		AttachType:  sys.AttachType(ebpf.AttachTraceIter),
-		IterInfo:    sys.NewPointer(unsafe.Pointer(&info)),
+		AttachType:  linux.AttachType(ebpf.AttachTraceIter),
+		IterInfo:    linux.NewPointer(unsafe.Pointer(&info)),
 		IterInfoLen: uint32(unsafe.Sizeof(info)),
 	}
 
-	fd, err := sys.LinkCreateIter(&attr)
+	fd, err := linux.LinkCreateIter(&attr)
 	if err != nil {
 		if haveFeatErr := haveBPFLink(); haveFeatErr != nil {
 			return nil, haveFeatErr
@@ -68,11 +69,11 @@ type Iter struct {
 //
 // Reading from the returned reader triggers the BPF program.
 func (it *Iter) Open() (io.ReadCloser, error) {
-	attr := &sys.IterCreateAttr{
+	attr := &linux.IterCreateAttr{
 		LinkFd: it.fd.Uint(),
 	}
 
-	fd, err := sys.IterCreate(attr)
+	fd, err := linux.IterCreate(attr)
 	if err != nil {
 		return nil, fmt.Errorf("can't create iterator: %w", err)
 	}

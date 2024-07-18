@@ -3,7 +3,7 @@ package sysenc
 import (
 	"unsafe"
 
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 )
 
 type Buffer struct {
@@ -60,10 +60,10 @@ func (b Buffer) AppendTo(dst []byte) []byte {
 }
 
 // Pointer returns the location where a syscall should write.
-func (b Buffer) Pointer() sys.Pointer {
+func (b Buffer) Pointer() linux.Pointer {
 	// NB: This deliberately ignores b.length to support zero-copy
 	// marshaling / unmarshaling using unsafe.Pointer.
-	return sys.NewPointer(b.ptr)
+	return linux.NewPointer(b.ptr)
 }
 
 // Unmarshal the buffer into the provided value.

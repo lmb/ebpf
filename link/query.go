@@ -7,7 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 )
 
 // QueryOptions defines additional parameters when querying for programs.
@@ -59,12 +59,12 @@ func (ap *AttachedProgram) LinkID() (ID, bool) {
 // Returns ErrNotSupportd on a kernel without BPF_PROG_QUERY
 func QueryPrograms(opts QueryOptions) (*QueryResult, error) {
 	// query the number of programs to allocate correct slice size
-	attr := sys.ProgQueryAttr{
+	attr := linux.ProgQueryAttr{
 		TargetFdOrIfindex: uint32(opts.Target),
-		AttachType:        sys.AttachType(opts.Attach),
+		AttachType:        linux.AttachType(opts.Attach),
 		QueryFlags:        opts.QueryFlags,
 	}
-	err := sys.ProgQuery(&attr)
+	err := linux.ProgQuery(&attr)
 	if err != nil {
 		if haveFeatErr := haveProgQuery(); haveFeatErr != nil {
 			return nil, fmt.Errorf("query programs: %w", haveFeatErr)
@@ -81,21 +81,21 @@ func QueryPrograms(opts QueryOptions) (*QueryResult, error) {
 
 	count := attr.Count
 	progIds := make([]ebpf.ProgramID, count)
-	attr = sys.ProgQueryAttr{
+	attr = linux.ProgQueryAttr{
 		TargetFdOrIfindex: uint32(opts.Target),
-		AttachType:        sys.AttachType(opts.Attach),
+		AttachType:        linux.AttachType(opts.Attach),
 		QueryFlags:        opts.QueryFlags,
 		Count:             count,
-		ProgIds:           sys.NewPointer(unsafe.Pointer(&progIds[0])),
+		ProgIds:           linux.NewPointer(unsafe.Pointer(&progIds[0])),
 	}
 
 	var linkIds []ID
 	if haveLinkIDs {
 		linkIds = make([]ID, count)
-		attr.LinkIds = sys.NewPointer(unsafe.Pointer(&linkIds[0]))
+		attr.LinkIds = linux.NewPointer(unsafe.Pointer(&linkIds[0]))
 	}
 
-	if err := sys.ProgQuery(&attr); err != nil {
+	if err := linux.ProgQuery(&attr); err != nil {
 		return nil, fmt.Errorf("query programs: %w", err)
 	}
 

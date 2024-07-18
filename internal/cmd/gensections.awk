@@ -13,7 +13,7 @@ BEGIN {
 	print ""
 	print "// Code in this file is derived from libbpf, available under BSD-2-Clause."
 	print ""
-	print "import \"github.com/cilium/ebpf/internal/sys\""
+	print "import \"github.com/cilium/ebpf/internal/linux\""
 	print ""
 	print "var elfSectionDefs = []libbpfElfSectionDef{"
 
@@ -22,9 +22,9 @@ BEGIN {
 
 /\tSEC_DEF/ {
 	pattern = trim(substr($1, 10))
-	prog_type = "sys.BPF_PROG_TYPE_" trim($2)
+	prog_type = "linux.BPF_PROG_TYPE_" trim($2)
 	attach_type = trim($3)
-	attach_type = attach_type == "0" ? "0" : "sys." attach_type
+	attach_type = attach_type == "0" ? "0" : "linux." attach_type
 	flags = trim($4, "", ")")
 	flags = gensub("SEC_", "_SEC_", "g", flags)
 	printf "\t{%s, %s, %s, %s},\n", pattern, prog_type, attach_type, flags;

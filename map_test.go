@@ -13,6 +13,7 @@ import (
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/testutils"
 	"github.com/cilium/ebpf/internal/unix"
@@ -1461,24 +1462,24 @@ func TestCgroupPerCPUStorageMarshaling(t *testing.T) {
 	}
 	defer prog.Close()
 
-	progAttachAttrs := sys.ProgAttachAttr{
+	progAttachAttrs := linux.ProgAttachAttr{
 		TargetFdOrIfindex: uint32(cgroup.Fd()),
 		AttachBpfFd:       uint32(prog.FD()),
 		AttachType:        uint32(AttachCGroupInetEgress),
 		AttachFlags:       0,
 		ReplaceBpfFd:      0,
 	}
-	err = sys.ProgAttach(&progAttachAttrs)
+	err = linux.ProgAttach(&progAttachAttrs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		attr := sys.ProgDetachAttr{
+		attr := linux.ProgDetachAttr{
 			TargetFdOrIfindex: uint32(cgroup.Fd()),
 			AttachBpfFd:       uint32(prog.FD()),
 			AttachType:        uint32(AttachCGroupInetEgress),
 		}
-		if err := sys.ProgDetach(&attr); err != nil {
+		if err := linux.ProgDetach(&attr); err != nil {
 			t.Fatal(err)
 		}
 	}()
@@ -1575,8 +1576,8 @@ func TestMapName(t *testing.T) {
 	}
 	defer m.Close()
 
-	var info sys.MapInfo
-	if err := sys.ObjInfo(m.fd, &info); err != nil {
+	var info linux.MapInfo
+	if err := linux.ObjInfo(m.fd, &info); err != nil {
 		t.Fatal(err)
 	}
 

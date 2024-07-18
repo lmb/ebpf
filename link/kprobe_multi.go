@@ -11,7 +11,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -84,27 +84,27 @@ func kprobeMulti(prog *ebpf.Program, opts KprobeMultiOptions, flags uint32) (Lin
 		return nil, fmt.Errorf("Cookies must be exactly Symbols or Addresses in length: %w", errInvalidInput)
 	}
 
-	attr := &sys.LinkCreateKprobeMultiAttr{
+	attr := &linux.LinkCreateKprobeMultiAttr{
 		ProgFd:           uint32(prog.FD()),
-		AttachType:       sys.BPF_TRACE_KPROBE_MULTI,
+		AttachType:       linux.BPF_TRACE_KPROBE_MULTI,
 		KprobeMultiFlags: flags,
 	}
 
 	switch {
 	case syms != 0:
 		attr.Count = syms
-		attr.Syms = sys.NewStringSlicePointer(opts.Symbols)
+		attr.Syms = linux.NewStringSlicePointer(opts.Symbols)
 
 	case addrs != 0:
 		attr.Count = addrs
-		attr.Addrs = sys.NewPointer(unsafe.Pointer(&opts.Addresses[0]))
+		attr.Addrs = linux.NewPointer(unsafe.Pointer(&opts.Addresses[0]))
 	}
 
 	if cookies != 0 {
-		attr.Cookies = sys.NewPointer(unsafe.Pointer(&opts.Cookies[0]))
+		attr.Cookies = linux.NewPointer(unsafe.Pointer(&opts.Cookies[0]))
 	}
 
-	fd, err := sys.LinkCreateKprobeMulti(attr)
+	fd, err := linux.LinkCreateKprobeMulti(attr)
 	if errors.Is(err, unix.ESRCH) {
 		return nil, fmt.Errorf("couldn't find one or more symbols: %w", os.ErrNotExist)
 	}
@@ -133,8 +133,8 @@ func (kml *kprobeMultiLink) Update(prog *ebpf.Program) error {
 }
 
 func (kml *kprobeMultiLink) Info() (*Info, error) {
-	var info sys.KprobeMultiLinkInfo
-	if err := sys.ObjInfo(kml.fd, &info); err != nil {
+	var info linux.KprobeMultiLinkInfo
+	if err := linux.ObjInfo(kml.fd, &info); err != nil {
 		return nil, fmt.Errorf("kprobe multi link info: %s", err)
 	}
 	extra := &KprobeMultiInfo{
@@ -171,11 +171,11 @@ var haveBPFLinkKprobeMulti = internal.NewFeatureTest("bpf_link_kprobe_multi", "5
 	}
 	defer prog.Close()
 
-	fd, err := sys.LinkCreateKprobeMulti(&sys.LinkCreateKprobeMultiAttr{
+	fd, err := linux.LinkCreateKprobeMulti(&linux.LinkCreateKprobeMultiAttr{
 		ProgFd:     uint32(prog.FD()),
-		AttachType: sys.BPF_TRACE_KPROBE_MULTI,
+		AttachType: linux.BPF_TRACE_KPROBE_MULTI,
 		Count:      1,
-		Syms:       sys.NewStringSlicePointer([]string{"vprintk"}),
+		Syms:       linux.NewStringSlicePointer([]string{"vprintk"}),
 	})
 	switch {
 	case errors.Is(err, unix.EINVAL):

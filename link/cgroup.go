@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 )
 
 type cgroupAttachFlags uint32
@@ -192,8 +192,8 @@ func newLinkCgroup(cgroup *os.File, attach ebpf.AttachType, prog *ebpf.Program) 
 }
 
 func (cg *linkCgroup) Info() (*Info, error) {
-	var info sys.CgroupLinkInfo
-	if err := sys.ObjInfo(cg.fd, &info); err != nil {
+	var info linux.CgroupLinkInfo
+	if err := linux.ObjInfo(cg.fd, &info); err != nil {
 		return nil, fmt.Errorf("cgroup link info: %s", err)
 	}
 	extra := &CgroupInfo{

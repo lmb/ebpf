@@ -1,6 +1,6 @@
-//go:build !386 && !amd64p32 && !arm && !mipsle && !mips64p32le && !armbe && !mips && !mips64p32
+//go:build 386 || amd64p32 || arm || mipsle || mips64p32le
 
-package sys
+package linux
 
 import (
 	"unsafe"
@@ -10,4 +10,5 @@ import (
 // conform to the syscall specification.
 type Pointer struct {
 	ptr unsafe.Pointer
+	pad uint32
 }

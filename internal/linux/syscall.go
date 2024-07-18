@@ -1,10 +1,11 @@
-package sys
+package linux
 
 import (
 	"runtime"
 	"syscall"
 	"unsafe"
 
+	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -120,7 +121,7 @@ func (i *PerfEventLinkInfo) info() (unsafe.Pointer, uint32) {
 // ObjInfo retrieves information about a BPF Fd.
 //
 // info may be one of MapInfo, ProgInfo, LinkInfo and BtfInfo.
-func ObjInfo(fd *FD, info Info) error {
+func ObjInfo(fd *sys.FD, info Info) error {
 	ptr, len := info.info()
 	err := ObjGetInfoByFd(&ObjGetInfoByFdAttr{
 		BpfFd:   fd.Uint(),
@@ -209,21 +210,4 @@ func (we wrappedErrno) Error() string {
 		return "operation not supported"
 	}
 	return we.Errno.Error()
-}
-
-type syscallError struct {
-	error
-	errno syscall.Errno
-}
-
-func Error(err error, errno syscall.Errno) error {
-	return &syscallError{err, errno}
-}
-
-func (se *syscallError) Is(target error) bool {
-	return target == se.error
-}
-
-func (se *syscallError) Unwrap() error {
-	return se.errno
 }

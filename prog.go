@@ -16,6 +16,7 @@ import (
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
 	"github.com/cilium/ebpf/internal/kallsyms"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/sysenc"
 	"github.com/cilium/ebpf/internal/unix"
@@ -260,16 +261,16 @@ func newProgramWithOptions(spec *ProgramSpec, opts ProgramOptions) (*Program, er
 		kv = v.Kernel()
 	}
 
-	attr := &sys.ProgLoadAttr{
-		ProgType:           sys.ProgType(spec.Type),
+	attr := &linux.ProgLoadAttr{
+		ProgType:           linux.ProgType(spec.Type),
 		ProgFlags:          spec.Flags,
-		ExpectedAttachType: sys.AttachType(spec.AttachType),
-		License:            sys.NewStringPointer(spec.License),
+		ExpectedAttachType: linux.AttachType(spec.AttachType),
+		License:            linux.NewStringPointer(spec.License),
 		KernVersion:        kv,
 	}
 
 	if haveObjName() == nil {
-		attr.ProgName = sys.NewObjName(spec.Name)
+		attr.ProgName = linux.NewObjName(spec.Name)
 	}
 
 	insns := make(asm.Instructions, len(spec.Instructions))
@@ -313,11 +314,11 @@ func newProgramWithOptions(spec *ProgramSpec, opts ProgramOptions) (*Program, er
 
 		attr.FuncInfoRecSize = btf.FuncInfoSize
 		attr.FuncInfoCnt = uint32(len(fib)) / btf.FuncInfoSize
-		attr.FuncInfo = sys.NewSlicePointer(fib)
+		attr.FuncInfo = linux.NewSlicePointer(fib)
 
 		attr.LineInfoRecSize = btf.LineInfoSize
 		attr.LineInfoCnt = uint32(len(lib)) / btf.LineInfoSize
-		attr.LineInfo = sys.NewSlicePointer(lib)
+		attr.LineInfo = linux.NewSlicePointer(lib)
 	}
 
 	if !b.Empty() {
@@ -348,7 +349,7 @@ func newProgramWithOptions(spec *ProgramSpec, opts ProgramOptions) (*Program, er
 
 	if len(handles) > 0 {
 		fdArray := handles.fdArray()
-		attr.FdArray = sys.NewPointer(unsafe.Pointer(&fdArray[0]))
+		attr.FdArray = linux.NewPointer(unsafe.Pointer(&fdArray[0]))
 	}
 
 	buf := bytes.NewBuffer(make([]byte, 0, insns.Size()))
@@ -358,7 +359,7 @@ func newProgramWithOptions(spec *ProgramSpec, opts ProgramOptions) (*Program, er
 	}
 
 	bytecode := buf.Bytes()
-	attr.Insns = sys.NewSlicePointer(bytecode)
+	attr.Insns = linux.NewSlicePointer(bytecode)
 	attr.InsnCnt = uint32(len(bytecode) / asm.InstructionSize)
 
 	if spec.AttachTarget != nil {
@@ -392,12 +393,12 @@ func newProgramWithOptions(spec *ProgramSpec, opts ProgramOptions) (*Program, er
 		logBuf = make([]byte, minVerifierLogSize)
 		attr.LogLevel = opts.LogLevel
 		attr.LogSize = uint32(len(logBuf))
-		attr.LogBuf = sys.NewSlicePointer(logBuf)
+		attr.LogBuf = linux.NewSlicePointer(logBuf)
 	}
 
 	for {
 		var fd *sys.FD
-		fd, err = sys.ProgLoad(attr)
+		fd, err = linux.ProgLoad(attr)
 		if err == nil {
 			return &Program{unix.ByteSliceToString(logBuf), fd, spec.Name, "", spec.Type}, nil
 		}
@@ -437,7 +438,7 @@ func newProgramWithOptions(spec *ProgramSpec, opts ProgramOptions) (*Program, er
 
 		logBuf = make([]byte, logSize)
 		attr.LogSize = logSize
-		attr.LogBuf = sys.NewSlicePointer(logBuf)
+		attr.LogBuf = linux.NewSlicePointer(logBuf)
 	}
 
 	end := bytes.IndexByte(logBuf, 0)
@@ -499,7 +500,7 @@ func NewProgramFromFD(fd int) (*Program, error) {
 //
 // Returns ErrNotExist, if there is no eBPF program with the given id.
 func NewProgramFromID(id ProgramID) (*Program, error) {
-	fd, err := sys.ProgGetFdById(&sys.ProgGetFdByIdAttr{
+	fd, err := linux.ProgGetFdById(&linux.ProgGetFdByIdAttr{
 		Id: uint32(id),
 	})
 	if err != nil {
@@ -741,13 +742,13 @@ var haveProgRun = internal.NewFeatureTest("BPF_PROG_RUN", "4.12", func() error {
 	defer prog.Close()
 
 	in := internal.EmptyBPFContext
-	attr := sys.ProgRunAttr{
+	attr := linux.ProgRunAttr{
 		ProgFd:     uint32(prog.FD()),
 		DataSizeIn: uint32(len(in)),
-		DataIn:     sys.NewSlicePointer(in),
+		DataIn:     linux.NewSlicePointer(in),
 	}
 
-	err = sys.ProgRun(&attr)
+	err = linux.ProgRun(&attr)
 	switch {
 	case errors.Is(err, unix.EINVAL):
 		// Check for EINVAL specifically, rather than err != nil since we
@@ -758,7 +759,7 @@ var haveProgRun = internal.NewFeatureTest("BPF_PROG_RUN", "4.12", func() error {
 		// We know that PROG_TEST_RUN is supported if we get EINTR.
 		return nil
 
-	case errors.Is(err, sys.ENOTSUPP):
+	case errors.Is(err, linux.ENOTSUPP):
 		// The first PROG_TEST_RUN patches shipped in 4.12 didn't include
 		// a test runner for SocketFilter. ENOTSUPP means PROG_TEST_RUN is
 		// supported, but not for the program type used in the probe.
@@ -791,24 +792,24 @@ func (p *Program) run(opts *RunOptions) (uint32, time.Duration, error) {
 		ctxOut = make([]byte, binary.Size(opts.ContextOut))
 	}
 
-	attr := sys.ProgRunAttr{
+	attr := linux.ProgRunAttr{
 		ProgFd:      p.fd.Uint(),
 		DataSizeIn:  uint32(len(opts.Data)),
 		DataSizeOut: uint32(len(opts.DataOut)),
-		DataIn:      sys.NewSlicePointer(opts.Data),
-		DataOut:     sys.NewSlicePointer(opts.DataOut),
+		DataIn:      linux.NewSlicePointer(opts.Data),
+		DataOut:     linux.NewSlicePointer(opts.DataOut),
 		Repeat:      uint32(opts.Repeat),
 		CtxSizeIn:   uint32(len(ctxBytes)),
 		CtxSizeOut:  uint32(len(ctxOut)),
-		CtxIn:       sys.NewSlicePointer(ctxBytes),
-		CtxOut:      sys.NewSlicePointer(ctxOut),
+		CtxIn:       linux.NewSlicePointer(ctxBytes),
+		CtxOut:      linux.NewSlicePointer(ctxOut),
 		Flags:       opts.Flags,
 		Cpu:         opts.CPU,
 	}
 
 retry:
 	for {
-		err := sys.ProgRun(&attr)
+		err := linux.ProgRun(&attr)
 		if err == nil {
 			break retry
 		}
@@ -836,7 +837,7 @@ retry:
 			continue retry
 		}
 
-		if errors.Is(err, sys.ENOTSUPP) {
+		if errors.Is(err, linux.ENOTSUPP) {
 			return 0, 0, fmt.Errorf("kernel doesn't support running %s: %w", p.Type(), ErrNotSupported)
 		}
 
@@ -888,8 +889,8 @@ func marshalProgram(p *Program, length int) ([]byte, error) {
 //
 // Requires at least Linux 4.11.
 func LoadPinnedProgram(fileName string, opts *LoadPinOptions) (*Program, error) {
-	fd, err := sys.ObjGet(&sys.ObjGetAttr{
-		Pathname:  sys.NewStringPointer(fileName),
+	fd, err := linux.ObjGet(&linux.ObjGetAttr{
+		Pathname:  linux.NewStringPointer(fileName),
 		FileFlags: opts.Marshal(),
 	})
 	if err != nil {
@@ -932,8 +933,8 @@ func SanitizeName(name string, replacement rune) string {
 //
 // Returns ErrNotExist, if there is no next eBPF program.
 func ProgramGetNextID(startID ProgramID) (ProgramID, error) {
-	attr := &sys.ProgGetNextIdAttr{Id: uint32(startID)}
-	return ProgramID(attr.NextId), sys.ProgGetNextId(attr)
+	attr := &linux.ProgGetNextIdAttr{Id: uint32(startID)}
+	return ProgramID(attr.NextId), linux.ProgGetNextId(attr)
 }
 
 // BindMap binds map to the program and is only released once program is released.
@@ -941,12 +942,12 @@ func ProgramGetNextID(startID ProgramID) (ProgramID, error) {
 // This may be used in cases where metadata should be associated with the program
 // which otherwise does not contain any references to the map.
 func (p *Program) BindMap(m *Map) error {
-	attr := &sys.ProgBindMapAttr{
+	attr := &linux.ProgBindMapAttr{
 		ProgFd: uint32(p.FD()),
 		MapFd:  uint32(m.FD()),
 	}
 
-	return sys.ProgBindMap(attr)
+	return linux.ProgBindMap(attr)
 }
 
 var errUnrecognizedAttachType = errors.New("unrecognized attach type")

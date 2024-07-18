@@ -8,6 +8,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/btf"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/unix"
 )
@@ -21,8 +22,8 @@ func (f *tracing) Update(new *ebpf.Program) error {
 }
 
 func (f *tracing) Info() (*Info, error) {
-	var info sys.TracingLinkInfo
-	if err := sys.ObjInfo(f.fd, &info); err != nil {
+	var info linux.TracingLinkInfo
+	if err := linux.ObjInfo(f.fd, &info); err != nil {
 		return nil, fmt.Errorf("tracing link info: %s", err)
 	}
 	extra := &TracingInfo{
@@ -93,7 +94,7 @@ func AttachFreplace(targetProg *ebpf.Program, name string, prog *ebpf.Program) (
 		Attach:  ebpf.AttachNone,
 		BTF:     typeID,
 	})
-	if errors.Is(err, sys.ENOTSUPP) {
+	if errors.Is(err, linux.ENOTSUPP) {
 		// This may be returned by bpf_tracing_prog_attach via bpf_arch_text_poke.
 		return nil, fmt.Errorf("create raw tracepoint: %w", ErrNotSupported)
 	}
@@ -144,15 +145,15 @@ func attachBTFID(program *ebpf.Program, at ebpf.AttachType, cookie uint64) (Link
 	case ebpf.AttachTraceFEntry, ebpf.AttachTraceFExit, ebpf.AttachTraceRawTp,
 		ebpf.AttachModifyReturn, ebpf.AttachLSMMac:
 		// Attach via BPF link
-		fd, err = sys.LinkCreateTracing(&sys.LinkCreateTracingAttr{
+		fd, err = linux.LinkCreateTracing(&linux.LinkCreateTracingAttr{
 			ProgFd:     uint32(program.FD()),
-			AttachType: sys.AttachType(at),
+			AttachType: linux.AttachType(at),
 			Cookie:     cookie,
 		})
 		if err == nil {
 			break
 		}
-		if !errors.Is(err, unix.EINVAL) && !errors.Is(err, sys.ENOTSUPP) {
+		if !errors.Is(err, unix.EINVAL) && !errors.Is(err, linux.ENOTSUPP) {
 			return nil, fmt.Errorf("create tracing link: %w", err)
 		}
 		fallthrough
@@ -162,10 +163,10 @@ func attachBTFID(program *ebpf.Program, at ebpf.AttachType, cookie uint64) (Link
 			return nil, fmt.Errorf("create raw tracepoint with cookie: %w", ErrNotSupported)
 		}
 
-		fd, err = sys.RawTracepointOpen(&sys.RawTracepointOpenAttr{
+		fd, err = linux.RawTracepointOpen(&linux.RawTracepointOpenAttr{
 			ProgFd: uint32(program.FD()),
 		})
-		if errors.Is(err, sys.ENOTSUPP) {
+		if errors.Is(err, linux.ENOTSUPP) {
 			// This may be returned by bpf_tracing_prog_attach via bpf_arch_text_poke.
 			return nil, fmt.Errorf("create raw tracepoint: %w", ErrNotSupported)
 		}

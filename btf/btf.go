@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 )
 
 const btfMagic = 0xeB9F
@@ -27,7 +27,7 @@ var (
 )
 
 // ID represents the unique ID of a BTF object.
-type ID = sys.BTFID
+type ID = linux.BTFID
 
 // immutableTypes is a set of types which musn't be changed.
 type immutableTypes struct {

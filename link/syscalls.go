@@ -8,28 +8,28 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/internal"
-	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
 // Type is the kind of link.
-type Type = sys.LinkType
+type Type = linux.LinkType
 
 // Valid link types.
 const (
-	UnspecifiedType   = sys.BPF_LINK_TYPE_UNSPEC
-	RawTracepointType = sys.BPF_LINK_TYPE_RAW_TRACEPOINT
-	TracingType       = sys.BPF_LINK_TYPE_TRACING
-	CgroupType        = sys.BPF_LINK_TYPE_CGROUP
-	IterType          = sys.BPF_LINK_TYPE_ITER
-	NetNsType         = sys.BPF_LINK_TYPE_NETNS
-	XDPType           = sys.BPF_LINK_TYPE_XDP
-	PerfEventType     = sys.BPF_LINK_TYPE_PERF_EVENT
-	KprobeMultiType   = sys.BPF_LINK_TYPE_KPROBE_MULTI
-	TCXType           = sys.BPF_LINK_TYPE_TCX
-	UprobeMultiType   = sys.BPF_LINK_TYPE_UPROBE_MULTI
-	NetfilterType     = sys.BPF_LINK_TYPE_NETFILTER
-	NetkitType        = sys.BPF_LINK_TYPE_NETKIT
+	UnspecifiedType   = linux.BPF_LINK_TYPE_UNSPEC
+	RawTracepointType = linux.BPF_LINK_TYPE_RAW_TRACEPOINT
+	TracingType       = linux.BPF_LINK_TYPE_TRACING
+	CgroupType        = linux.BPF_LINK_TYPE_CGROUP
+	IterType          = linux.BPF_LINK_TYPE_ITER
+	NetNsType         = linux.BPF_LINK_TYPE_NETNS
+	XDPType           = linux.BPF_LINK_TYPE_XDP
+	PerfEventType     = linux.BPF_LINK_TYPE_PERF_EVENT
+	KprobeMultiType   = linux.BPF_LINK_TYPE_KPROBE_MULTI
+	TCXType           = linux.BPF_LINK_TYPE_TCX
+	UprobeMultiType   = linux.BPF_LINK_TYPE_UPROBE_MULTI
+	NetfilterType     = linux.BPF_LINK_TYPE_NETFILTER
+	NetkitType        = linux.BPF_LINK_TYPE_NETKIT
 )
 
 var haveProgAttach = internal.NewFeatureTest("BPF_PROG_ATTACH", "4.10", func() error {
@@ -76,7 +76,7 @@ var haveProgAttachReplace = internal.NewFeatureTest("BPF_PROG_ATTACH atomic repl
 	// We know that we have BPF_PROG_ATTACH since we can load CGroupSKB programs.
 	// If passing BPF_F_REPLACE gives us EINVAL we know that the feature isn't
 	// present.
-	attr := sys.ProgAttachAttr{
+	attr := linux.ProgAttachAttr{
 		// We rely on this being checked after attachFlags.
 		TargetFdOrIfindex: ^uint32(0),
 		AttachBpfFd:       uint32(prog.FD()),
@@ -84,7 +84,7 @@ var haveProgAttachReplace = internal.NewFeatureTest("BPF_PROG_ATTACH atomic repl
 		AttachFlags:       uint32(flagReplace),
 	}
 
-	err = sys.ProgAttach(&attr)
+	err = linux.ProgAttach(&attr)
 	if errors.Is(err, unix.EINVAL) {
 		return internal.ErrNotSupported
 	}
@@ -95,13 +95,13 @@ var haveProgAttachReplace = internal.NewFeatureTest("BPF_PROG_ATTACH atomic repl
 })
 
 var haveBPFLink = internal.NewFeatureTest("bpf_link", "5.7", func() error {
-	attr := sys.LinkCreateAttr{
+	attr := linux.LinkCreateAttr{
 		// This is a hopefully invalid file descriptor, which triggers EBADF.
 		TargetFd:   ^uint32(0),
 		ProgFd:     ^uint32(0),
-		AttachType: sys.AttachType(ebpf.AttachCGroupInetIngress),
+		AttachType: linux.AttachType(ebpf.AttachCGroupInetIngress),
 	}
-	_, err := sys.LinkCreate(&attr)
+	_, err := linux.LinkCreate(&attr)
 	if errors.Is(err, unix.EINVAL) {
 		return internal.ErrNotSupported
 	}
@@ -112,15 +112,15 @@ var haveBPFLink = internal.NewFeatureTest("bpf_link", "5.7", func() error {
 })
 
 var haveProgQuery = internal.NewFeatureTest("BPF_PROG_QUERY", "4.15", func() error {
-	attr := sys.ProgQueryAttr{
+	attr := linux.ProgQueryAttr{
 		// We rely on this being checked during the syscall.
 		// With an otherwise correct payload we expect EBADF here
 		// as an indication that the feature is present.
 		TargetFdOrIfindex: ^uint32(0),
-		AttachType:        sys.AttachType(ebpf.AttachCGroupInetIngress),
+		AttachType:        linux.AttachType(ebpf.AttachCGroupInetIngress),
 	}
 
-	err := sys.ProgQuery(&attr)
+	err := linux.ProgQuery(&attr)
 
 	if errors.Is(err, unix.EBADF) {
 		return nil
@@ -146,16 +146,16 @@ var haveTCX = internal.NewFeatureTest("tcx", "6.6", func() error {
 	}
 
 	defer prog.Close()
-	attr := sys.LinkCreateTcxAttr{
+	attr := linux.LinkCreateTcxAttr{
 		// We rely on this being checked during the syscall.
 		// With an otherwise correct payload we expect ENODEV here
 		// as an indication that the feature is present.
 		TargetIfindex: ^uint32(0),
 		ProgFd:        uint32(prog.FD()),
-		AttachType:    sys.AttachType(ebpf.AttachTCXIngress),
+		AttachType:    linux.AttachType(ebpf.AttachTCXIngress),
 	}
 
-	_, err = sys.LinkCreateTcx(&attr)
+	_, err = linux.LinkCreateTcx(&attr)
 
 	if errors.Is(err, unix.ENODEV) {
 		return nil
@@ -181,16 +181,16 @@ var haveNetkit = internal.NewFeatureTest("netkit", "6.7", func() error {
 	}
 
 	defer prog.Close()
-	attr := sys.LinkCreateNetkitAttr{
+	attr := linux.LinkCreateNetkitAttr{
 		// We rely on this being checked during the syscall.
 		// With an otherwise correct payload we expect ENODEV here
 		// as an indication that the feature is present.
 		TargetIfindex: ^uint32(0),
 		ProgFd:        uint32(prog.FD()),
-		AttachType:    sys.AttachType(ebpf.AttachNetkitPrimary),
+		AttachType:    linux.AttachType(ebpf.AttachNetkitPrimary),
 	}
 
-	_, err = sys.LinkCreateNetkit(&attr)
+	_, err = linux.LinkCreateNetkit(&attr)
 
 	if errors.Is(err, unix.ENODEV) {
 		return nil
