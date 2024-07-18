@@ -3,6 +3,7 @@ package testutils
 import (
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -76,6 +77,10 @@ func checkKernelVersion(tb testing.TB, ufe *internal.UnsupportedFeatureError) {
 
 func SkipOnOldKernel(tb testing.TB, minVersion, feature string) {
 	tb.Helper()
+
+	if runtime.GOOS != "linux" {
+		tb.Skip("Can't run this test on", runtime.GOOS)
+	}
 
 	if IsKernelLessThan(tb, minVersion) {
 		tb.Skipf("Test requires at least kernel %s (due to missing %s)", minVersion, feature)
