@@ -1,11 +1,16 @@
+//go:build linux
+
 package btf_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/cilium/ebpf/btf"
+	"github.com/cilium/ebpf/internal"
 	"github.com/cilium/ebpf/internal/testutils"
+	"github.com/go-quicktest/qt"
 )
 
 func TestHandleIterator(t *testing.T) {
@@ -78,6 +83,17 @@ func TestParseModuleSplitSpec(t *testing.T) {
 	_, err = module.Spec(base)
 	if err != nil {
 		t.Fatal("Parse module BTF:", err)
+	}
+}
+
+func TestVerifierError(t *testing.T) {
+	b, err := btf.NewBuilder([]btf.Type{&btf.Int{Encoding: 255}})
+	qt.Assert(t, qt.IsNil(err))
+	_, err = btf.NewHandle(b)
+	testutils.SkipIfNotSupported(t, err)
+	var ve *internal.VerifierError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected a VerifierError, got: %v", err)
 	}
 }
 

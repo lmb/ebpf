@@ -307,17 +307,6 @@ func TestLoadSpecFromElf(t *testing.T) {
 	})
 }
 
-func TestVerifierError(t *testing.T) {
-	b, err := NewBuilder([]Type{&Int{Encoding: 255}})
-	qt.Assert(t, qt.IsNil(err))
-	_, err = NewHandle(b)
-	testutils.SkipIfNotSupported(t, err)
-	var ve *internal.VerifierError
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected a VerifierError, got: %v", err)
-	}
-}
-
 func TestGuessBTFByteOrder(t *testing.T) {
 	bo := guessRawBTFByteOrder(vmlinuxTestdataReader(t))
 	if bo != binary.LittleEndian {
