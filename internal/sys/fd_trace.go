@@ -52,7 +52,7 @@ var onLeakFD func(*runtime.Frames)
 
 // fds is a registry of all file descriptors wrapped into sys.fds that were
 // created while an fd tracer was active.
-var fds sync.Map // map[int]*runtime.Frames
+var fds sync.Map // map[raw]*runtime.Frames
 
 // flushFrames removes all elements from fds and returns them as a slice. This
 // deals with the fact that a runtime.Frames can only be unwound once using
