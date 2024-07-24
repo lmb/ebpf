@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -123,7 +124,7 @@ var getTracefsPath = sync.OnceValues(func() (string, error) {
 		// RHEL/CentOS
 		{"/sys/kernel/debug/tracing", unix.DEBUGFS_MAGIC},
 	} {
-		if fsType, err := internal.FSType(p.path); err == nil && fsType == p.fsType {
+		if fsType, err := linux.FSType(p.path); err == nil && fsType == p.fsType {
 			return p.path, nil
 		}
 	}

@@ -1,4 +1,6 @@
-package internal
+//go:build linux
+
+package linux
 
 import (
 	"testing"
