@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cilium/ebpf/internal/unix"
 	"github.com/go-quicktest/qt"
+	"golang.org/x/sys/unix"
 )
 
 func TestPoller(t *testing.T) {
