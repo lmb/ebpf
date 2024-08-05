@@ -5,13 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
-	"runtime"
 
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/internal"
 	"github.com/cilium/ebpf/internal/sys"
-	"github.com/cilium/ebpf/internal/tracefs"
 )
 
 var (
@@ -272,35 +269,6 @@ var haveBPFToBPFCalls = internal.NewFeatureTest("bpf2bpf calls", "4.16", func() 
 	}
 	_ = fd.Close()
 	return nil
-})
-
-var haveSyscallWrapper = internal.NewFeatureTest("syscall wrapper", "4.17", func() error {
-	prefix := internal.PlatformPrefix()
-	if prefix == "" {
-		return fmt.Errorf("unable to find the platform prefix for (%s)", runtime.GOARCH)
-	}
-
-	args := tracefs.ProbeArgs{
-		Type:   tracefs.Kprobe,
-		Symbol: prefix + "sys_bpf",
-		Pid:    -1,
-	}
-
-	var err error
-	args.Group, err = tracefs.RandomGroup("ebpf_probe")
-	if err != nil {
-		return err
-	}
-
-	evt, err := tracefs.NewEvent(args)
-	if errors.Is(err, os.ErrNotExist) {
-		return internal.ErrNotSupported
-	}
-	if err != nil {
-		return err
-	}
-
-	return evt.Close()
 })
 
 var haveProgramExtInfos = internal.NewFeatureTest("program ext_infos", "5.0", func() error {
