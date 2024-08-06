@@ -24,6 +24,9 @@ func TestMain(m *testing.M) {
 	testmain.Run(m)
 }
 
+// TODO: Some of these tests should run on Windows, but
+// the tests all rely on being able to load programs.
+
 func TestRawLink(t *testing.T) {
 	cgroup, prog := mustCgroupFixtures(t)
 
