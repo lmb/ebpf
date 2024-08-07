@@ -23,6 +23,25 @@ const (
 	NetkitType        = sys.BPF_LINK_TYPE_NETKIT
 )
 
+// NewLinkFromFD creates a link from a raw fd.
+//
+// Deprecated: use [NewFromFD] instead.
+func NewLinkFromFD(fd int) (Link, error) {
+	return NewFromFD(fd)
+}
+
+// NewFromFD creates a link from a raw fd.
+//
+// You should not use fd after calling this function.
+func NewFromFD(fd int) (Link, error) {
+	sysFD, err := sys.NewFD(fd)
+	if err != nil {
+		return nil, err
+	}
+
+	return wrapRawLink(&RawLink{fd: sysFD})
+}
+
 // AttachRawLink creates a raw link.
 func AttachRawLink(opts RawLinkOptions) (*RawLink, error) {
 	if err := haveBPFLink(); err != nil {

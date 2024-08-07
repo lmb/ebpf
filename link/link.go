@@ -49,25 +49,6 @@ type Link interface {
 	isLink()
 }
 
-// NewLinkFromFD creates a link from a raw fd.
-//
-// Deprecated: use [NewFromFD] instead.
-func NewLinkFromFD(fd int) (Link, error) {
-	return NewFromFD(fd)
-}
-
-// NewFromFD creates a link from a raw fd.
-//
-// You should not use fd after calling this function.
-func NewFromFD(fd int) (Link, error) {
-	sysFD, err := sys.NewFD(fd)
-	if err != nil {
-		return nil, err
-	}
-
-	return wrapRawLink(&RawLink{fd: sysFD})
-}
-
 // NewFromID returns the link associated with the given id.
 //
 // Returns ErrNotExist if there is no link with the given id.
