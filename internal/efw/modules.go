@@ -29,5 +29,8 @@ func CallResult(proc *windows.LazyProc, args ...uintptr) error {
 	}
 
 	res, _, _ := proc.Call(args...)
-	return ResultToError(Result(res))
+	if err := ResultToError(Result(res)); err != nil {
+		return fmt.Errorf("%s: %w", proc.Name, err)
+	}
+	return nil
 }

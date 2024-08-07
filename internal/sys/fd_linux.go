@@ -8,14 +8,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const invalidFd = -1
-
 var ErrClosedFd syscall.Errno = unix.EBADF
 
-type RawFD = int
-
 type FD struct {
-	raw RawFD
+	raw int
 }
 
 // NewFD wraps a raw fd with a finalizer.
