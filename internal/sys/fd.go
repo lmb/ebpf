@@ -8,7 +8,7 @@ import (
 	"github.com/cilium/ebpf/internal/testutils/testmain"
 )
 
-func newFD(value raw) *FD {
+func newFD(value RawFD) *FD {
 	testmain.TraceFD(value, 1)
 
 	fd := &FD{value}
@@ -45,7 +45,7 @@ func (fd *FD) String() string {
 	return strconv.FormatInt(int64(fd.raw), 10)
 }
 
-func (fd *FD) disown() raw {
+func (fd *FD) disown() RawFD {
 	value := fd.raw
 	testmain.ForgetFD(value)
 	fd.raw = invalidFd

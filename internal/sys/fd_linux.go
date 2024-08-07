@@ -12,10 +12,10 @@ const invalidFd = -1
 
 var ErrClosedFd syscall.Errno = unix.EBADF
 
-type raw = int
+type RawFD = int
 
 type FD struct {
-	raw raw
+	raw RawFD
 }
 
 // NewFD wraps a raw fd with a finalizer.

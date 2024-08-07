@@ -12,11 +12,22 @@ import (
 // Module is the global handle for the eBPF for Windows user-space API.
 var Module = windows.NewLazyDLL("ebpfapi.dll")
 
-func FindProcs(procs ...*windows.LazyProc) error {
-	for _, proc := range procs {
-		if err := proc.Find(); err != nil {
-			return fmt.Errorf("%s: %w", proc.Name, err)
-		}
+// Call a function which returns a C int.
+func CallInt(proc *windows.LazyProc, args ...uintptr) (int, windows.Errno, error) {
+	if err := proc.Find(); err != nil {
+		return 0, 0, fmt.Errorf("%s: %w", proc.Name, err)
 	}
-	return nil
+
+	res, _, err := proc.Call(args...)
+	return int(int32(res)), err.(windows.Errno), nil
+}
+
+// Call a function which returns ebpf_result_t.
+func CallResult(proc *windows.LazyProc, args ...uintptr) error {
+	if err := proc.Find(); err != nil {
+		return fmt.Errorf("%s: %w", proc.Name, err)
+	}
+
+	res, _, _ := proc.Call(args...)
+	return ResultToError(Result(res))
 }

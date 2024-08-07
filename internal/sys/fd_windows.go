@@ -4,34 +4,35 @@ import (
 	"fmt"
 	"syscall"
 
+	"github.com/cilium/ebpf/internal/efw"
 	"golang.org/x/sys/windows"
 )
 
 var ErrClosedFd syscall.Errno = windows.ERROR_INVALID_HANDLE
 
 // https://github.com/microsoft/ebpf-for-windows/blob/54632eb360c560ebef2f173be1a4a4625d540744/include/ebpf_api.h#L25
-const invalidFd = raw(-1)
+const invalidFd = RawFD(-1)
 
-// Using int here isn't entirely correct since eBPF for Windows defines this
-// to be int32. However Go guarantees that int is at least int32, and using int
-// here is more ergonomic.
+// The underlying type of a file descriptor.
+//
+// Has to match the size of the C type exactly since we
+// sometimes pass a pointer to this.
 //
 // https://github.com/microsoft/ebpf-for-windows/blob/54632eb360c560ebef2f173be1a4a4625d540744/include/ebpf_api.h#L24
-type raw = int
+type RawFD = int32
 
 // FD wraps a handle which is managed by the eBPF for Windows runtime.
 //
 // It is not equivalent to a real file descriptor or handle.
 type FD struct {
-	raw raw
+	raw RawFD
 }
 
 // NewFD wraps a raw fd with a finalizer.
 //
 // You must not use the raw fd after calling this function.
-func NewFD(value raw) (*FD, error) {
-	if value == invalidFd || value == 0 {
-		// We also reject 0 since we
+func NewFD(value RawFD) (*FD, error) {
+	if value == invalidFd {
 		return nil, fmt.Errorf("invalid fd %d", value)
 	}
 
@@ -50,7 +51,7 @@ func NewFD(value raw) (*FD, error) {
 // and vice versa.
 var ucrt = windows.NewLazyDLL("ucrtbased.dll")
 
-// ebpf_result_t ebpf_close_fd(fd_t fd)
+// int _close(int fd)
 var ucrtCloseProc = ucrt.NewProc("_close")
 
 // int _dup(int fd)
@@ -61,15 +62,17 @@ func (fd *FD) Close() error {
 		return nil
 	}
 
-	if err := ucrtCloseProc.Find(); err != nil {
-		return err
-	}
-
 	// efW uses _open_osfhandle() to turn a handle into a virtual fd.
 	// We need to call into the C runtime to close it.
 	// TODO: This should also go via ebpfapi.dll
-	res, _, _ := ucrtCloseProc.Call(uintptr(fd.disown()))
-	return winResultToError(winResult(res))
+	res, errNo, err := efw.CallInt(ucrtCloseProc, uintptr(fd.disown()))
+	if err != nil {
+		return err
+	}
+	if res == -1 {
+		return fmt.Errorf("close: %w", errNo)
+	}
+	return nil
 }
 
 func (fd *FD) Dup() (*FD, error) {
@@ -77,14 +80,13 @@ func (fd *FD) Dup() (*FD, error) {
 		return nil, ErrClosedFd
 	}
 
-	if err := ucrtDupProc.Find(); err != nil {
+	res, errNo, err := efw.CallInt(ucrtDupProc, uintptr(fd.raw))
+	if err != nil {
 		return nil, err
 	}
-
-	res, _, err := ucrtDupProc.Call(uintptr(fd.raw))
-	if int32(res) == -1 {
-		return nil, fmt.Errorf("dup: %w", err)
+	if res == -1 {
+		return nil, fmt.Errorf("dup: %w", errNo)
 	}
 
-	return NewFD(int(int32(res)))
+	return NewFD(int32(res))
 }
