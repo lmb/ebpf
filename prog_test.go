@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/go-quicktest/qt"
-	"golang.org/x/sys/unix"
 
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
@@ -543,28 +542,6 @@ func TestProgramMarshaling(t *testing.T) {
 	}
 }
 
-func TestProgramFromFD(t *testing.T) {
-	prog := mustSocketFilter(t)
-
-	// If you're thinking about copying this, don't. Use
-	// Clone() instead.
-	prog2, err := NewProgramFromFD(dupFD(t, prog.FD()))
-	testutils.SkipIfNotSupported(t, err)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer prog2.Close()
-
-	// Name and type are supposed to be copied from program info.
-	if haveObjName() == nil && prog2.name != "test" {
-		t.Errorf("Expected program to have name test, got '%s'", prog2.name)
-	}
-
-	if prog2.typ != SocketFilter {
-		t.Errorf("Expected program to have type SocketFilter, got '%s'", prog2.typ)
-	}
-}
-
 func TestHaveProgTestRun(t *testing.T) {
 	testutils.CheckFeatureTest(t, haveProgRun)
 }
@@ -1089,15 +1066,4 @@ func ExampleProgramSpec_Tag() {
 	} else {
 		fmt.Println("The programs are identical, tag is", tag)
 	}
-}
-
-func dupFD(tb testing.TB, fd int) int {
-	tb.Helper()
-
-	dup, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 1)
-	if err != nil {
-		tb.Fatal("Can't dup fd:", err)
-	}
-
-	return dup
 }

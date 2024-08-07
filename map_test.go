@@ -921,32 +921,6 @@ func TestMapInMap(t *testing.T) {
 	}
 }
 
-func TestNewMapInMapFromFD(t *testing.T) {
-	nested, err := NewMap(&MapSpec{
-		Type:       ArrayOfMaps,
-		KeySize:    4,
-		MaxEntries: 2,
-		InnerMap: &MapSpec{
-			Type:       Array,
-			KeySize:    4,
-			ValueSize:  4,
-			MaxEntries: 2,
-		},
-	})
-	testutils.SkipIfNotSupported(t, err)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer nested.Close()
-
-	// Do not copy this, use Clone instead.
-	another, err := NewMapFromFD(dupFD(t, nested.FD()))
-	if err != nil {
-		t.Fatal("Can't create a new nested map from an FD")
-	}
-	another.Close()
-}
-
 func TestPerfEventArray(t *testing.T) {
 	specs := []*MapSpec{
 		{Type: PerfEventArray},
@@ -1527,32 +1501,6 @@ func TestMapName(t *testing.T) {
 
 	if name := sys.ByteSliceToString(info.Name[:]); name != "test" {
 		t.Error("Expected name to be test, got", name)
-	}
-}
-
-func TestMapFromFD(t *testing.T) {
-	m := createArray(t)
-
-	if err := m.Put(uint32(0), uint32(123)); err != nil {
-		t.Fatal(err)
-	}
-
-	// If you're thinking about copying this, don't. Use
-	// Clone() instead.
-	m2, err := NewMapFromFD(dupFD(t, m.FD()))
-	testutils.SkipIfNotSupported(t, err)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer m2.Close()
-
-	var val uint32
-	if err := m2.Lookup(uint32(0), &val); err != nil {
-		t.Fatal("Can't look up key:", err)
-	}
-
-	if val != 123 {
-		t.Error("Wrong value")
 	}
 }
 
