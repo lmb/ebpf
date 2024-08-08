@@ -34,13 +34,13 @@ func AttachRawLink(opts RawLinkOptions) (*RawLink, error) {
 		return nil, fmt.Errorf("attach link: %w", err)
 	}
 
-	var rawFD sys.RawFD
-	err = efw.CallResult(procLinkFd, link, uintptr(unsafe.Pointer(&rawFD)))
+	var raw sys.RawFD
+	err = efw.CallResult(procLinkFd, link, uintptr(unsafe.Pointer(&raw)))
 	if err != nil {
 		return nil, fmt.Errorf("link fd: %w", err)
 	}
 
-	fd, err := sys.NewFD(rawFD)
+	fd, err := sys.NewFD(int(raw))
 	if err != nil {
 		return nil, err
 	}
