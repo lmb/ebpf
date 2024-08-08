@@ -4,7 +4,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 
 	"github.com/cilium/ebpf/asm"
@@ -597,6 +599,13 @@ func (cl *collectionLoader) populateDeferredMaps() error {
 // Omitting Collection.Close() during application shutdown is an error.
 // See the package documentation for details around Map and Program lifecycle.
 func LoadCollection(file string) (*Collection, error) {
+	if runtime.GOOS == "windows" {
+		// This mirrors a check in efW.
+		if ext := filepath.Ext(file); ext == "sys" || ext == "dll" {
+			return loadCollectionFromNativeImage(file)
+		}
+	}
+
 	spec, err := LoadCollectionSpec(file)
 	if err != nil {
 		return nil, err

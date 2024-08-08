@@ -36,6 +36,44 @@ func NewFD(value int) (*FD, error) {
 	return newFD(value), nil
 }
 
+// TODO: Should also go via ebpfapi.dll?
+var ucrt = windows.NewLazyDLL("ucrtd.dll")
+
+/*
+	 int _open_osfhandle (
+		intptr_t osfhandle,
+		int flags
+	 );
+*/
+var openOsfHandle = ucrt.NewProc("_open_osfhandle")
+
+func NewFDFromHandle(h windows.Handle) (*FD, error) {
+	fd, errNo, err := efw.CallInt(openOsfHandle, uintptr(h), 0)
+	if err != nil {
+		return nil, err
+	}
+	if fd == -1 {
+		return nil, errNo
+	}
+
+	return NewFD(fd)
+}
+
+func NewFDsFromHandles(hs []windows.Handle) (_ []*FD, err error) {
+	var fds []*FD
+	defer func() {
+		if err != nil {
+			for _, fd := range fds {
+				fd.Close()
+			}
+		}
+	}()
+
+	for _, h := range handles {
+		
+	}
+}
+
 // ebpf_result_t ebpf_close_fd(fd_t fd)
 var closeFdProc = efw.Module.NewProc("ebpf_close_fd")
 

@@ -5,12 +5,16 @@ package efw
 
 import (
 	"fmt"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 // Module is the global handle for the eBPF for Windows user-space API.
 var Module = windows.NewLazyDLL("ebpfapi.dll")
+
+// void ebpf_free_mem(_In_opt_ _Post_invalid_ const void* p)
+var freeProc = Module.NewProc("ebpf_free_mem")
 
 // Call a function which returns a C int.
 //
@@ -43,3 +47,16 @@ func CallResult(proc *windows.LazyProc, args ...uintptr) error {
 // TODO: Is this really size_t?
 type Size uint64
 
+type Pointer[T any] struct {
+	ptr uintptr
+}
+
+func (p Pointer[T]) Cast() *T {
+	// TODO: Is this dodgy?
+	return (*T)(unsafe.Pointer(p.ptr))
+}
+
+// Free memory allocated by the efW runtime.
+func (p Pointer[T]) Free() {
+	freeProc.Call(p.ptr)
+}
