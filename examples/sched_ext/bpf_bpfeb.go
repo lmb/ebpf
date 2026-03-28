@@ -8,6 +8,7 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"structs"
 
 	"github.com/cilium/ebpf"
 )
@@ -18,6 +19,15 @@ import (
 const (
 	bpfMapMinimalSched = "minimal_sched"
 )
+
+// bpfStructOpsMinimalSched is a struct type for the struct_ops map.
+type bpfStructOpsMinimalSched struct {
+	_         structs.HostLayout
+	Init      *ebpf.Program `ebpf:"init"`
+	Flags     uint64        `ebpf:"flags"`
+	TimeoutMs uint32        `ebpf:"timeout_ms"`
+	Name      [128]int8     `ebpf:"name"`
+}
 
 // loadBpf returns the embedded CollectionSpec for bpf.
 func loadBpf() (*ebpf.CollectionSpec, error) {
@@ -83,6 +93,12 @@ type bpfObjects struct {
 	bpfPrograms
 	bpfMaps
 	bpfVariables
+	bpfStructOps
+}
+
+// bpfStructOps contains all struct_ops types.
+type bpfStructOps struct {
+	StructOpsMinimalSched bpfStructOpsMinimalSched `ebpf:"minimal_sched"`
 }
 
 func (o *bpfObjects) Close() error {

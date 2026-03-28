@@ -378,7 +378,7 @@ func TestNewCollectionFdLeak(t *testing.T) {
 }
 
 func TestAssignValues(t *testing.T) {
-	zero := func(t reflect.Type, name string) (any, error) {
+	zero := func(t reflect.Type, name string, _ reflect.Value) (any, error) {
 		return reflect.Zero(t).Interface(), nil
 	}
 
