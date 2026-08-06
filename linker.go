@@ -251,6 +251,15 @@ func fixupAndValidate(insns asm.Instructions) error {
 // than 2^28 to fit into a tagged constant.
 const kfuncCallPoisonBase = 0xdedc0de
 
+// kfuncTargetName returns the kernel symbol name for a kfunc extern. The final
+// ___ suffix is a local flavor and isn't part of the target symbol name.
+func kfuncTargetName(name string) string {
+	if index := strings.LastIndex(name, "___"); index > 0 {
+		return name[:index]
+	}
+	return name
+}
+
 // fixupKfuncs loops over all instructions in search for kfunc calls.
 // If at least one is found, the current kernels BTF and module BTFis are searched to set Instruction.Constant
 // and Instruction.Offset to the correct values.
@@ -308,7 +317,7 @@ fixups:
 		// findTargetInKernel returns [btf.ErrNotFound] if the target can't be found
 		// or if BTF is not enabled.
 		target := btf.Type((*btf.Func)(nil))
-		spec, module, err := findTargetInKernel(kfm.Func.Name, &target, cache)
+		spec, module, err := findTargetInKernel(kfuncTargetName(kfm.Func.Name), &target, cache)
 		if errors.Is(err, btf.ErrNotFound) {
 			if kfm.Binding == elf.STB_WEAK {
 				if ins.IsKfuncCall() {

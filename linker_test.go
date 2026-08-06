@@ -94,6 +94,21 @@ func TestForwardFunctionDeclaration(t *testing.T) {
 	}
 }
 
+func TestKfuncTargetName(t *testing.T) {
+	tests := map[string]string{
+		"foo":               "foo",
+		"foo___v1":          "foo",
+		"foo___v2___compat": "foo___v2",
+		"___leading":        "___leading",
+	}
+
+	for name, want := range tests {
+		t.Run(name, func(t *testing.T) {
+			qt.Assert(t, qt.Equals(kfuncTargetName(name), want))
+		})
+	}
+}
+
 func TestFlattenInstructionsAllocations(t *testing.T) {
 	name := "entrypoint"
 	instructions := asm.Instructions{
