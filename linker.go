@@ -251,13 +251,26 @@ func fixupAndValidate(insns asm.Instructions) error {
 // than 2^28 to fit into a tagged constant.
 const kfuncCallPoisonBase = 0xdedc0de
 
-// kfuncTargetName returns the kernel symbol name for a kfunc extern. The final
-// ___ suffix is a local flavor and isn't part of the target symbol name.
-func kfuncTargetName(name string) string {
-	if index := strings.LastIndex(name, "___"); index > 0 {
-		return name[:index]
+// poisonWeakKfunc marks a reference to an unavailable weak kfunc. Calls use a
+// recognizable invalid function ID, while existence checks load a null
+// address. The latter allows BPF compatibility wrappers to select a fallback.
+func poisonWeakKfunc(ins *asm.Instruction) error {
+	if ins.IsKfuncCall() {
+		fn, err := asm.BuiltinFuncForPlatform(platform.Native, kfuncCallPoisonBase)
+		if err != nil {
+			return err
+		}
+		*ins = fn.Call()
+		return nil
 	}
-	return name
+
+	if ins.OpCode.IsDWordLoad() {
+		ins.Constant = 0
+		ins.Src = 0
+		return nil
+	}
+
+	return fmt.Errorf("only kfunc calls and dword loads may have kfunc metadata")
 }
 
 // fixupKfuncs loops over all instructions in search for kfunc calls.
@@ -316,24 +329,13 @@ fixups:
 
 		// findTargetInKernel returns [btf.ErrNotFound] if the target can't be found
 		// or if BTF is not enabled.
+		targetName, _, _ := strings.Cut(kfm.Func.Name, "___")
 		target := btf.Type((*btf.Func)(nil))
-		spec, module, err := findTargetInKernel(kfuncTargetName(kfm.Func.Name), &target, cache)
+		spec, module, err := findTargetInKernel(targetName, &target, cache)
 		if errors.Is(err, btf.ErrNotFound) {
 			if kfm.Binding == elf.STB_WEAK {
-				if ins.IsKfuncCall() {
-					// If the kfunc call is weak and not found, poison the call. Use a
-					// recognizable constant to make it easier to debug.
-					fn, err := asm.BuiltinFuncForPlatform(platform.Native, kfuncCallPoisonBase)
-					if err != nil {
-						return nil, err
-					}
-					*ins = fn.Call()
-				} else if ins.OpCode.IsDWordLoad() {
-					// If the kfunc DWordLoad is weak and not found, set its address to 0.
-					ins.Constant = 0
-					ins.Src = 0
-				} else {
-					return nil, fmt.Errorf("only kfunc calls and dword loads may have kfunc metadata")
+				if err := poisonWeakKfunc(ins); err != nil {
+					return nil, err
 				}
 
 				iter.Next()
@@ -353,6 +355,16 @@ fixups:
 		}
 
 		if err := btf.CheckTypeCompatibility(kfm.Func.Type, target.(*btf.Func).Type); err != nil {
+			// A weak flavored declaration with a different signature describes
+			// another version of the kfunc, not an invalid call. Treat it as
+			// unavailable so bpf_ksym_exists() can select a compatible variant.
+			if kfm.Binding == elf.STB_WEAK {
+				if err := poisonWeakKfunc(ins); err != nil {
+					return nil, err
+				}
+				iter.Next()
+				continue
+			}
 			return nil, &incompatibleKfuncError{kfm.Func.Name, err}
 		}
 

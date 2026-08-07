@@ -94,19 +94,30 @@ func TestForwardFunctionDeclaration(t *testing.T) {
 	}
 }
 
-func TestKfuncTargetName(t *testing.T) {
-	tests := map[string]string{
-		"foo":               "foo",
-		"foo___v1":          "foo",
-		"foo___v2___compat": "foo___v2",
-		"___leading":        "___leading",
-	}
+func TestPoisonWeakKfunc(t *testing.T) {
+	t.Run("call", func(t *testing.T) {
+		ins := asm.FnUnspec.Call()
+		ins.Src = asm.PseudoKfuncCall
 
-	for name, want := range tests {
-		t.Run(name, func(t *testing.T) {
-			qt.Assert(t, qt.Equals(kfuncTargetName(name), want))
-		})
-	}
+		qt.Assert(t, qt.IsNil(poisonWeakKfunc(&ins)))
+		qt.Assert(t, qt.IsFalse(ins.IsKfuncCall()))
+		qt.Assert(t, qt.Equals(ins.Constant, int64(kfuncCallPoisonBase)))
+	})
+
+	t.Run("existence check", func(t *testing.T) {
+		ins := asm.LoadImm(asm.R1, 42, asm.DWord)
+		ins.Src = asm.PseudoKfuncCall
+
+		qt.Assert(t, qt.IsNil(poisonWeakKfunc(&ins)))
+		qt.Assert(t, qt.Equals(ins.Constant, int64(0)))
+		qt.Assert(t, qt.Equals(ins.Src, asm.R0))
+	})
+
+	t.Run("invalid instruction", func(t *testing.T) {
+		ins := asm.Mov.Imm(asm.R0, 0)
+		qt.Assert(t, qt.ErrorMatches(poisonWeakKfunc(&ins),
+			"only kfunc calls and dword loads may have kfunc metadata"))
+	})
 }
 
 func TestFlattenInstructionsAllocations(t *testing.T) {
